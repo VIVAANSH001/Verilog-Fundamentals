@@ -145,3 +145,30 @@
 **4. `SLLI x7, x1, 3` --> `0x00309393`**
 
 **5. `SRAI x8, x7, 2` --> `0x4023D413`**
+
+## DAY 19: Load Instructions
+ 
+### What are the load instructions?
+- These are I-type instructions but instead of using the immediate as a value to operate on, the immediate is used as an offset for memory. So the address calculation is `address = rs1 + immediate` and then you go read from memory at that address and put the result into rd.
+
+- `Now I am going to mention the different types of load instructions:`
+
+- LW: Load Word, reads 4 bytes (32 bits) from memory and puts it straight into the register. There is no need for sign or zero extension as the entire value is put into the register with no leftover bits.
+- LH: Load Halfword, reads 2 bytes (16 bits), then sign extends bit [15] up into bits [31:16] to fill the rest of the 32 bit register.
+- LB: Load Byte, reads 1 byte (8 bits), sign extend bit [7] up into bits [31:8].
+- LHU: Load Halfword Unsigned, reads 2 bytes but instead of sign extending it just zero fills the top 16 bits.
+- LBU: Load Byte Unsigned, reads 1 byte instead of 2 like LHU and zero fills the top 24 bits.
+- So basically the "U" versions are for when you know the data is meant to be unsigned.
+
+### Why doesn't LW need a sign/zero extend decision?
+- Cause LW copies the entire 32 bits there is no space left over to sign extend or zero extend into, the whole register is filled by the load itself.
+
+### Sign extension on loads vs sign extension on immediates
+- This is the exact same mechanism as the immediate sign extension from Day 18 (copy the sign bit upward), just now its being applied to the data you load from memory instead of to an immediate baked into the instruction.
+
+### Memory addressing: base + offset
+- `lw x10, 4(x3)` means address = x3 + 4 then read a word from that address into x10. The 4 here is the same 12 bit signed I type immediate as before, just being used as an address offset now instead of a value to add for its own sake.
+- Important: this offset is a byte address not a word index. Memory in RV32 is `byte addressable`, meaning every single byte has its own address. A word is just 4 consecutive bytes.
+- So if you have an array of 4-byte words starting at address 0, w0 is at address 0, w1 is at address 4, w2 is at address 8, w3 is at address 12. The address jumps by 4 each time cause each word takes up 4 bytes of address space.
+- This means if you want the 3rd element of a word array, the byte offset is 2 * 4 = 8, not 2.
+- The hardware does not know or enforc word alignment for you, its on the programer/compiler to compute the right byte offset so the load lands cleanly on a 4 byte boundary.
