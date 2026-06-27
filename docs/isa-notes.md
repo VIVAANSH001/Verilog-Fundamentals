@@ -172,3 +172,26 @@
 - So if you have an array of 4-byte words starting at address 0, w0 is at address 0, w1 is at address 4, w2 is at address 8, w3 is at address 12. The address jumps by 4 each time cause each word takes up 4 bytes of address space.
 - This means if you want the 3rd element of a word array, the byte offset is 2 * 4 = 8, not 2.
 - The hardware does not know or enforc word alignment for you, its on the programer/compiler to compute the right byte offset so the load lands cleanly on a 4 byte boundary.
+
+## DAY 20: Store Instructions
+ 
+### What are the store instructions?
+- These are S-type instructions, not I-type, because a store needs two register inputs instead of one, rs1 for the address and rs2 for the actual value being written to memory. There is no rd here since nothing comes back into a register, the value just goes out to memory.
+
+- SW: Store Word, writes all 32 bits of rs2 to memory at rs1 + offset.
+- SH: Store Halfword, writes only the lower 16 bits of rs2.
+- SB: Store Byte, writes only the lower 8 bits of rs2, the rest of rs2 just gets dropped.
+
+### Why is this S-type and not I-type?
+- I-type only has room for one source register plus an rd slot. A store has no rd but needs two register reads, rs1 and rs2, plus an immediate, so the immediate has to get split across the bit positions that would normally be funct7 and rd.
+- This split also keeps rs1 and rs2 in the exact same bit positions as every other format, so the CPU can start reading both regs at the same time decode is figuring out what instruction this even is, instead of waiting on decode first. Basically running two steps parallely for efficiency.
+
+### Endianness
+- RISC-V is little endian, meaning the least significant byte goes at the lowest address.
+- For example, x5 = 0x12345678, `sw x5, 0(x3)` with x3 = 0: address 0 = 0x78, address 1 = 0x56, address 2 = 0x34, address 3 = 0x12. Do you see it the least significant bytes go to the lowest addresses.
+- For SB, theres only one byte being placed so endianness doesnt even come into play, it just writes bits [7:0] of rs2.
+
+### Array copy exercise
+- Goal was to copy a 4 element word array from the src x1 to the dst x2 using only the LW and SW instructions.
+- Used x3 as scratch, offsets go 0, 4, 8, 12 same as Day 19's addressing.
+- Code is in docs/assembly-practice.md.
