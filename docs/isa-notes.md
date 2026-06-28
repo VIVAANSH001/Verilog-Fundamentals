@@ -195,3 +195,34 @@
 - Goal was to copy a 4 element word array from the src x1 to the dst x2 using only the LW and SW instructions.
 - Used x3 as scratch, offsets go 0, 4, 8, 12 same as Day 19's addressing.
 - Code is in docs/assembly-practice.md.
+
+## DAY 21: Branch Instructions
+
+### What are branch instructions?
+- Conditional, unlike everything so far which just goes PC+4 no matter what. Branch compares rs1 and rs2, if true PC jumps to PC+imm, if false just PC+4 like normal.
+- BEQ rs1==rs2, BNE rs1!=rs2, BLT rs1 less than rs2 (signed), BGE rs1 greater than equal rs2 (signed), BLTU/BGEU same but unsigned.
+- There is no BGT/BLE cause u can just swap rs1 and rs2 to get the same effect, RISC-V keeps its instruction set as clean and lean as possinle. All same opcode `1100011`, funct3 tells them apart.
+
+### Why PC-relative?
+- eg: BEQ x3, x4, label
+- label isnt a 3rd thing being compared its just the assembler turning it into an offset, so target = PC + imm not target = imm directly.
+- Mainly for position independence, if code gets loaded somewhere else or stuff shifts earlier in the program absolute address would all break. PC-relative the gap to nearby targets stays the same regardless.
+- Also most branches jump close by anyway so small offset is enough, dont need full 32 bit reach.
+
+### B-type immediate
+- Reuses S-type layout (rs1/rs2 same spots as always for the decoder), leftover bits is where imm gets crammed in, hence scrambled order:
+- `imm[12] | imm[10:5] | rs2 | rs1 | funct3 | imm[4:1] | imm[11] | opcode`
+- bit 0 always implicitly 0 (2 byte aligned targets), so reassemble as imm[12] imm[11] imm[10:5] imm[4:1] 0
+
+### Range
+- 13 bit signed encoded value = -4096 to 4095, but real offset is that doubled (implicit 0 bit) so actual range is -8192 to +8190 in steps of 2 rather than 1 as implicitly least significant bit is 0. Local jumps only basically, anything further needs JAL.
+
+### Hand encoding
+- **BEQ x3, x4, label (+8 offset) --> 0x00418863**
+- offset 8 --> imm[4:1]=1000,imm[11]=0, imm[10:5]=000000, imm[12]=0
+- rs1=00011, rs2=00100, funct3=000,opcode=1100011
+
+### Real Code Applications: Negative offsets (loops)
+- A loop is just a branch pointing backward instead of forward, label is at a lower address than the branch itself so that means the offset = target - PC which comes out to be negative.
+- Same exact B-type encoding, nothing new, just imm[12] the sign bit is 1 instead of 0 and you gotta two's complement the negative offset before splitting it across the scattered bit positions instead of writing it straight.
+- Will actually need this once loops show up(Day 26, factorial/linear search).
