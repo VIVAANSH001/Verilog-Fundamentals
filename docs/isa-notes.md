@@ -226,3 +226,31 @@
 - A loop is just a branch pointing backward instead of forward, label is at a lower address than the branch itself so that means the offset = target - PC which comes out to be negative.
 - Same exact B-type encoding, nothing new, just imm[12] the sign bit is 1 instead of 0 and you gotta two's complement the negative offset before splitting it across the scattered bit positions instead of writing it straight.
 - Will actually need this once loops show up(Day 26, factorial/linear search).
+
+## DAY 22: Jump Instructions
+
+### What are JAL and JALR?
+- Two new instructions that both jump AND save a return address, unlike branches which are conditional and dont save anything.
+- Firstly comes JAL which is a PC-relative jump (target = PC + imm), like branches but unconditional. Also writes PC+4 into rd so u know where to come back to.
+- Then comes  JALR where target = rs1 + imm instead of PC + imm, then clears bit 0 of the result to force it even. Same link behaviour, writes PC+4 into rd.
+
+### Why does JALR need a register instead of just PC-relative like everything else?
+- Cause sometimes the target isnt known at compile time, like returning from a function (target is whatever ra holds) or calling through a function pointer. PC-relative cant encode "jump to whatever this register says" so JALR exists for that.
+- jal ra, label --> direct call (target known upfront)
+- jalr ra, 0(reg) --> indirect call (target comes from a register)
+- jalr x0, 0(ra) --> return (discard new link since ur done)
+
+### Why clear bit 0 on JALR specifically?
+- JAL/branch immediates never store bit 0 in the first place, hardware just appends a 0 when rebuilding the imm so its always even by construction and the immeadiate size can be larger.
+- JALR is real addition (rs1 + imm) so the sum can land on an odd address even if nothing looks wrong individually. Since instructions gotta be 2 byte aligned, spec just forces bit 0 to 0 after the add no matter what.
+
+### Range
+- 20 stored bits + implicit 0 = ±1MB exactly (1,048,576 / -1,048,576), step 2 as instructions are half word aligned. way bigger than branch range cause no rs1/rs2 eating into the bits.
+
+### Hand encoding
+- jal x1, +16 (instr at 0x2000) --> 0x010000EF
+- imm[4]=1 only (16 = 2^4), lands at bit24 in imm[10:1] field. messed this up first try by putting the bit at bit25 instead of bit24, gotta be careful lining up imm[n] to the actual bit position not just counting fields loosely.
+
+### Recursion problem with ra
+- if a function calls itself, ra gets overwritten every call so inner returns work but outer ones break, prev return addr is just gone.
+- fix is push ra to stack before the recursive call, pop it back after. need this for Day 26 (factorial) will talk about it more there.
