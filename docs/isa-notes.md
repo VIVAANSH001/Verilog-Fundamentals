@@ -254,3 +254,30 @@
 ### Recursion problem with ra
 - if a function calls itself, ra gets overwritten every call so inner returns work but outer ones break, prev return addr is just gone.
 - fix is push ra to stack before the recursive call, pop it back after. need this for Day 26 (factorial) will talk about it more there.
+
+## DAY 23: Upper Immediate Instructions (U Type)
+
+### What are LUI and AUIPC?
+- Both U-type, both just stuff a 20 bit immediate into bits [31:12] of rd, bottom 12 bits zeroed. Only difference is what they do with it after.
+- LUI: rd = imm << 12. Straight copy the value into the top 20 bits of the destination register.
+- AUIPC: rd = PC + (imm << 12). Same shift but added to PC instead of just written raw and then given to a destination register.
+- Both exist purely to solve the problem of fitting a 32 bit value when your immediates max out at 12 bits.
+
+### Why does LUI even need the shift?
+- The 20 bits stored arent the value itself, theyre the *upper* 20 bits of the final value. So `lui x5, 0x12345` doesnt give x5 = 0x12345, it gives x5 = 0x12345000.The lower 12 bits are just gonna be zero.
+
+### Building a full 32 bit constant: LUI + ADDI
+- LUI gets u the upper 20 bits, ADDI tacks on the lower 12. eg `0x12345678` = `lui x5, 0x12345` then `addi x5, x5, 0x678`.
+- The problem is that ADDI sign extends its immediate. So if the lower 12 bits have bit 11 set to 1, ADDI reads that as negative and subtracts instead of adds, wrecking the upper bits.
+- The solution is quite simple but hard to catch onto bump the LUI immediate by +1 whenever bit 11 of the lower chunk is set, that extra +1 is worth exactly 0x1000 which cancels out whatever ADDI subtracts. Only needed when bit 11 is 1, if its 0 the naive split just works.
+
+### AUIPC + JALR for far jumps
+- AUIPC alone doesnt jump anywhere, its just arithmetic, PC + upper imm --> rd. Execution just continues to next instr.
+- Pairing it with JALR (target = rs1 + imm) is what actually makes the jump happen. AUIPC builds a far PC-relative address into a register, JALR jumps to whats in that register.
+- Why this combo and not AUIPC + JAL: JAL's offset is a fixed 21 bit field baked into the instruction itself so its capped at ±1MB no matter what. JALR pulls its target from a register instead, which can hold a full 32 bit value AUIPC just computed, so the range limit basically goes away.
+
+
+### BONUS!! What are pseudo-instructions / the assembler
+- The assmebler is a program that basically translates the assembly language into the machine code that the CPU can actually understand. The assembler thus also allows us to do a few tricks for our own convinience.
+- These tricks are ofcourse pseudo instructions which allow us to do multiple instructions with one statement , the assembler handles how the psuedo instruction runs.
+
