@@ -15,25 +15,31 @@ sw x3, 8(x2)
 lw x3, 12(x1)
 sw x3, 12(x2)
 ```
+
 ## Day 22: JAL/JALR practice
 - Basic call/return using JAL, then an indirect call through a register using JALR. add_five just does x5 = x5 + 5, the function pointer one does x7 = x7 - 1.
 
+```
 0x0000: jal ra, add_five
 0x0004: nop
 add_five:
 0x0100: addi x5, x5, 5
 0x0104: jalr x0, 0(ra)
+```
 
 - For this next one assume x6 already holds 0x0200 (function pointer style call)
 
+```
 0x0000: jalr ra, 0(x6)
 0x0004: nop
 0x0200: addi x7, x7, -1
 0x0204: jalr x0, 0(ra)
+```
 
 ## Day 26: Factorial (Recursion in Assembly)
 - Recursive factorial, n in a0, result returned in a0. RV32I has no MUL instruction as its the base CPU and does not support M type instructions, so the multiply step is done by repeated addition instead.
 
+```
 factorial:
     addi t0, x0, 1
     bgt  a0, t0, recurse  #checking if not base case
@@ -53,7 +59,8 @@ recurse:
     addi sp, sp, 8 # empty the stack           
     
     addi t1, a0, 0 # value to be added repeatedly 
-    addi a0, x0, 0 # where final value goes   
+    addi a0, x0, 0 # where final value goes
+
 mul_loop:
     beq  t0, x0, mul_done # branch if multiplication is done
     add  a0, a0, t1 # repeated addtion
@@ -62,10 +69,12 @@ mul_loop:
 mul_done:
 
     jalr x0, 0(ra)
+```
 
 ## Day 26: Linear Search
 - Searches array (base in a0, size in a2) for target value (a1). Returns index in a0 if found, -1 if not found. Walks a pointer forward by 4 bytes each iteration instead of recomputing index*4 each time.
 
+```
 linear_search:
     addi t0, x0, 0 # starting at index 0
     addi t1, a0, 0 # making the current element address into the base
@@ -85,3 +94,4 @@ found:
 not_found:
     addi a0, x0, -1
     jalr x0, 0(ra)
+```
