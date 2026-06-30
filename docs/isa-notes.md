@@ -281,3 +281,21 @@
 - The assmebler is a program that basically translates the assembly language into the machine code that the CPU can actually understand. The assembler thus also allows us to do a few tricks for our own convinience.
 - These tricks are ofcourse pseudo instructions which allow us to do multiple instructions with one statement , the assembler handles how the psuedo instruction runs.
 
+## DAY 24: Memory Model
+
+### Where does everything live?
+- Memory isnt just one undifferentiated blob, by convention its split into zones each with one job.
+- .text: actual instructions, what PC goes through.
+- .data: global vars that have an initial value.
+- .bss: global vars with no initial value, just zeroed at load time.
+- heap:dynamic memory requested at runtime which grows upward. wont really touch this at RV32I level.
+- stack: function call frames which grows downward.
+
+### Why does stack grow down and heap grow up?
+- They sit at opposite ends of the same middle free region so they can grow toward each other, sharing whatever space isnt used. If both grew the same direction one would hit a hard ceiling even while the other still has room.
+
+### Stack mechanics
+- sp tracks the top of the stack. Pushing decreases sp (claims space), popping increases it back (releases space).
+- Push: `addi sp, sp, -4` then `sw reg, 0(sp)`
+- Pop: `lw reg, 0(sp)` then `addi sp, sp, 4`
+- Order matters, claim space before writing, read before releasing.
