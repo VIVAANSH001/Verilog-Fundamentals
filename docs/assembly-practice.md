@@ -30,3 +30,58 @@ add_five:
 0x0004: nop
 0x0200: addi x7, x7, -1
 0x0204: jalr x0, 0(ra)
+
+## Day 26: Factorial (Recursion in Assembly)
+- Recursive factorial, n in a0, result returned in a0. RV32I has no MUL instruction as its the base CPU and does not support M type instructions, so the multiply step is done by repeated addition instead.
+
+factorial:
+    addi t0, x0, 1
+    bgt  a0, t0, recurse  #checking if not base case
+    addi a0, x0, 1
+    jalr x0, 0(ra) # returning 1
+
+recurse:
+    addi sp, sp, -8 # free up the stack
+    sw   a0, 0(sp) # save value n   
+    sw   ra, 4(sp) # save return address         
+
+    addi a0, a0, -1        
+    jal  ra, factorial # recursive call   
+
+    lw   t0, 0(sp)                    
+    lw   ra, 4(sp)              
+    addi sp, sp, 8 # empty the stack           
+    
+    addi t1, a0, 0 # value to be added repeatedly 
+    addi a0, x0, 0 # where final value goes   
+mul_loop:
+    beq  t0, x0, mul_done # branch if multiplication is done
+    add  a0, a0, t1 # repeated addtion
+    addi t0, t0, -1 # reducing t1 (no. of times u add)
+    jal  x0, mul_loop # keep adding
+mul_done:
+
+    jalr x0, 0(ra)
+
+## Day 26: Linear Search
+- Searches array (base in a0, size in a2) for target value (a1). Returns index in a0 if found, -1 if not found. Walks a pointer forward by 4 bytes each iteration instead of recomputing index*4 each time.
+
+linear_search:
+    addi t0, x0, 0 # starting at index 0
+    addi t1, a0, 0 # making the current element address into the base
+
+search_loop:
+    bge  t0, a2, not_found # checking if index is not found
+    lw   t2, 0(t1) # loading the current element
+    beq  t2, a1, found # checking if you found the element
+    addi t0, t0, 1 # increasing the index
+    addi t1, t1, 4 # increasing current address by 4
+    jal  x0, search_loop #looping back
+
+found:
+    addi a0, t0, 0 # returning the right index
+    jalr x0, 0(ra)
+
+not_found:
+    addi a0, x0, -1
+    jalr x0, 0(ra)
