@@ -36,7 +36,7 @@ add_five:
 0x0204: jalr x0, 0(ra)
 ```
 
-## Day 26: Factorial (Recursion in Assembly)
+## Day 24: Factorial (Recursion in Assembly)
 - Recursive factorial, n in a0, result returned in a0. RV32I has no MUL instruction as its the base CPU and does not support M type instructions, so the multiply step is done by repeated addition instead.
 
 ```
@@ -71,7 +71,7 @@ mul_done:
     jalr x0, 0(ra)
 ```
 
-## Day 26: Linear Search
+## Day 24: Linear Search
 - Searches array (base in a0, size in a2) for target value (a1). Returns index in a0 if found, -1 if not found. Walks a pointer forward by 4 bytes each iteration instead of recomputing index*4 each time.
 
 ```

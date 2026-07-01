@@ -299,3 +299,23 @@
 - Push: `addi sp, sp, -4` then `sw reg, 0(sp)`
 - Pop: `lw reg, 0(sp)` then `addi sp, sp, 4`
 - Order matters, claim space before writing, read before releasing.
+
+## DAY 25: Single Cycle Datapath
+
+### What did I do today?
+- sketched a single cycle datapath on paper then traced the following instructions through it: add x5,x1,x2 / lw x10,4(x3) / beq x1,x2,label. Building toward day 26 where this actually becomes verilog.
+
+### Which components did you use?
+- PC, instruction memory, register file, immediate gen, control unit, ALU, data memory, and the muxes connecting them all.
+
+### The muxes that I did not know were required?
+- When you work with software and hardware it becomes hard to tell the difference and thats what I faced today muxes are required in hardware because its not just logic you have actual wires and transistors involved.
+- ALUSrc mux: alu's second input isnt always rs2. for add it is, but for lw its the immediate. so theres a mux right before the alu picking rs2 vs imm, controlled by cu based on instr type.
+- writeback mux: what actually gets written to rd isnt always the alu result. for add yeah alu result goes straight to rd, but for lw the alu result is just an address, memory gets read at that address and thats what goes to rd instead. mux picks alu result vs mem data.
+- PC mux: default next PC is pc+4, but branches need pc+imm instead. two adders run parallely every cycle regardless of instr (yes even for add, wasteful but thats single cycle for u), mux at the end picks which one actually becomes the next pc.
+
+### CU isnt a sequence of steps
+- thought cu was doing more work first, turns out its just combinational logic, basically a big truth table. opcode/funct3/funct7 go in, every control signal comes out at once (alusrc, regwrite, memwrite etc), no first check this then that inside it. same clock cycle as everything else since nothing here has a clock edge except the register write and pc update at the end.
+
+### PC mux control specifically
+- alu doesnt send its result back to cu, no round trip. alu just has a zero flag as a side output wire (1 if result was zero). that wire ANDs with cu's "this is a branch" signal, and that combined signal drives the pc mux. all just wires settling, not steps.
