@@ -56,3 +56,27 @@
 - rtl/core/instr_mem.v: 1024x32 word memory, combinational read, $readmemh loaded, address sliced [11:2] for word indexing
 - programs/test1.hex: 3 hand encoded instructions including addi x1,x0,5 / addi x2,x0,10 / addi x3,x0,15.
 - tb/core/instr_mem_tb.v: 3 cases, pc=0/4/8, all passed
+
+## DAY 31: Instruction Decoder
+
+### why the decoder is just slicing, no logic
+- decoder's only job is pulling opcode, rd, rs1, rs2, funct3, funct7 out of the raw 32 bit instruction. pure wiring, no always block, no case statement, no decisions.
+- outputs all 6 fields unconditionally every time, regardless of what format the instruction actually is. decoder doesnt know or care what format its looking at.
+
+### fixed field positions across formats
+- opcode [6:0], rd [11:7], rs1 [19:15], rs2 [24:20], funct3 [14:12], funct7 [31:25] stay in the same bit position whenever they exist in a given format. thats what makes unconditional slicing safe, no muxing needed.
+- immediate is the one thing that doesnt sit still, scrambles around depending on format (esp B and J type). thats explicitly NOT this modules job.
+
+### three way split, not a chain
+- decoder: raw instr --> 6 fixed fields, no logic
+- immgen (day 34): raw instr --> immediate value, reads raw instr directly, not through decoder
+- control unit (day 37): reads decoders outputs (opcode/funct3/funct7) --> control signals, decides but doesnt execute
+- immgen and decoder both independently slice the same raw instr for different things, not decoder feeding immgen. CU is the one thing that actually consumes decoders output, keeps the "one seam" rule intact instead of two modules re-slicing the same bits.
+
+### garbage-in-context is fine
+- ran addi x1,x0,5 through it, rs2 output showed up as 5. thats not a real register read, thats the immediate bits sitting in the rs2 slot for I-type. decoder doesnt know that and outputs it anyway.
+- correct behavior tho, decoder isnt supposed to know format. its on immgen (reading raw instr) and CU (knowing opcode = I-type) to actually treat that field as garbage for this instruction.
+
+### what got built
+- rtl/core/instr_decoder.v: fixed slice decoder, 6 outputs (opcode/rd/rs1/rs2/funct3/funct7), pure combinational assigns
+- tb/core/instr_decoder_tb.v: 3 cases (addi, add, sub), verified field extraction incl. funct7 distinguishing add vs sub
