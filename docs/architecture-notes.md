@@ -28,3 +28,31 @@
 - rtl/core/pc.v: 32 bit PC register, sync reset, pc_next in, pc_current out
 - tb/core/pc_tb.v: 7 cases, reset/latch timing/mid-cycle stability/boundary value/re-reset, all passed
 - full folder skeleton up: rtl/core, rtl/soc, tb/core, tb/soc, programs, docs
+
+## DAY 30: Instruction Memory
+
+### why instruction memory is read only
+- imem holds the program, and the program doesnt change while the cpu runs it.only ever needs a read path, no write port, no we(write enable) signal.
+- data memory is different story, that one needs writes (sw etc), different module, different job.
+
+### combinational, not registered
+- single cycle rule comes into play again here, instruction gotta be available on the wire same cycle the pc points to it, no waiting a cycle for it to show up.
+
+### byte address vs word index mismatch
+- pc counts in bytes (0-->4-->8...) cause thats how riscv addresses memory.
+- imem array is word indexed (0-->1-->2...) since each slot holds one full 32 bit instruction, not a byte.
+- convert byte addr --> word index by dropping bottom 2 bits: pc_current[11:2]. slicing not dividing cause division is expensive in hardware, slicing is literally free (just wiring).
+- also finally clicked why pc is 32 bits even tho imem is only 1024 words (10 bits worth of addressing needed for imem). pc width = full address space width, doesnt shrink just cause imem is small today. matters later once mmio/peripherals get mapped into higher addresses as pc doesnt change, just more of it starts getting used.
+
+### $readmemh and the hex file
+- hex file (programs/test1.hex) is just plain text, hand written, one instruction per line, 8 hex digits each. no headers, no syntax.
+- $readmemh runs inside an initial block, fires at time 0 before sim clock even starts moving. loads line 1 into mem[0], line 2 into mem[1], etc, in order.
+
+### testbench lesson
+- no clock needed here, just drive pc_current directly and check output settles right after, cause its combinational.
+- used !== instead of != for checks. if readmemh path is wrong, output comes back as x, and != against x gives x back too (useless, not true/false). !== gives a clean 0/1 even against undefined bits, actually catches the failure instead of silently doing nothing.
+
+### what got built
+- rtl/core/instr_mem.v: 1024x32 word memory, combinational read, $readmemh loaded, address sliced [11:2] for word indexing
+- programs/test1.hex: 3 hand encoded instructions including addi x1,x0,5 / addi x2,x0,10 / addi x3,x0,15.
+- tb/core/instr_mem_tb.v: 3 cases, pc=0/4/8, all passed

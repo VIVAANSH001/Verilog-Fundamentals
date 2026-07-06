@@ -1,6 +1,4 @@
 // Module: pc (Program Counter)
-// Part of: rtl/core RV32I single-cycle CPU datapath
-//
 // Purpose:
 //   Holds the current instruction address. Pure register, thus does
 //   NOT decide whether the next PC is +4, a branch target, or a
@@ -9,17 +7,17 @@
 //   control separation rule for this project.
 //
 // Ports:
-//   clk - system clock
-//   rst - synchronous, active-high reset
-//   pc_next - next PC value, driven externally by a mux
-//   pc_current - current PC value, output to instruction memory
+//   clk: system clock
+//   rst: synchronous, active-high reset
+//   pc_next: next PC value, driven externally by a mux
+//   pc_current: current PC value, output to instruction memory
 //
 // Design notes:
-//   - Synchronous reset (checked inside always @(posedge clk),
-//     not in the sensitivity list), chosen because the
-//     testbench/simulation clock is always running; no power-on
-//     clock-stability problem to solve here.
-//   - Resets to 32'b0 (first instruction lives at address 0).
+// -->Synchronous reset (checked inside always @(posedge clk),
+//    not in the sensitivity list), chosen because the
+//    testbench/simulation clock is always running; no power-on
+//    clock-stability problem to solve here.
+// -->Resets to 32'b0 (first instruction lives at address 0).
 
 
 module pc (input wire clk,input wire rst,input wire [31:0] pc_next,output reg [31:0] pc_current);
