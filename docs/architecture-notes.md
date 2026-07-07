@@ -80,3 +80,27 @@
 ### what got built
 - rtl/core/instr_decoder.v: fixed slice decoder, 6 outputs (opcode/rd/rs1/rs2/funct3/funct7), pure combinational assigns
 - tb/core/instr_decoder_tb.v: 3 cases (addi, add, sub), verified field extraction incl. funct7 distinguishing add vs sub
+
+## DAY 32: Register File
+
+### why async read + sync write
+- alu needs both operand values same cycle it reads them, single cycle rule again, so reads gotta be combinational (async). if reads were registered youd need an extra cycle just to get values out, breaks the whole one-instruction-per-cycle thing.
+- writes are different, gotta be sync (only commit on posedge) cause otherwise a new result could stomp a register mid cycle while something else is still reading it. way safer to only ever change state on a clean edge.
+
+### x0 hardwire, write-block vs read-mask
+- two ways to keep x0 always reading 0: block writes from ever reaching regs[0], or let writes land wherever but mask the read output for addr 0 regardless of whats actually stored.
+- went with read-mask only, no write block. reasoning: if some future control/decode bug accidentally sends a write to x0, write-block "protects" you by silently eating it, which just hides the bug. read-mask means even if garbage lands in regs[0] the read output still forces 0, doesnt matter what happened on the write side. defensive against bugs you havent written yet, not just the ones you're thinking about now.
+
+### uninitialized on purpose, no reset
+- regs array has no reset logic and starts uninitialized. considered giving it a reset that zeros everything, decided against it.
+- riscv spec doesnt require gprs to hold any specific value at power on anyway (only x0 has to be 0, which is handled separately by the read mask).
+- more importantly: if a test program reads a register before ever writing to it, thats a bug in the program, and uninitialized regs show X in gtkwave for that, screaming at you that something's wrong. a reset that zeros everything would quietly turn that same bug into a plausible looking 0, hides it instead of catching it.
+
+### same cycle read-before-write ordering
+- what happens if you read and write the same register in the same cycle, like add x1,x1,x2? does the read see old x1 or new x1?
+- answer: old value, and this falls out for free from the async/sync split, no extra forwarding logic needed at this level. read is combinational off whatevers currently in regs[], write hasnt committed yet (wont till the edge), so read just naturally sees stale data until after the posedge lands.
+- tb explicitly covers this: point read_addr at the same reg being written, sample right before the edge (expect old value), sample right after (expect new value).
+
+### what got built
+- rtl/core/regfile.v: 32x32 reg file, 2 async read ports, 1 sync write port, x0 masked on read only, no reset
+- tb/core/regfile_tb.v: 6 cases incl. x0 read, basic write/read, write-to-x0 attempt, same cycle read-before-write ordering, dual port read, all passed
