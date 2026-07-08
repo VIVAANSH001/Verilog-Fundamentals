@@ -130,3 +130,27 @@
 ### what got built
 - rtl/core/alu.v: 32 bit ALU, all 10 RV32I ops, alu_ctrl select via case statement, zero flag, $signed() used correctly for SRA (a only) and SLT (both operands)
 - tb/core/alu_32_tb.v: 11 checks covering all 10 ops incl. zero flag on SUB, SRL vs SRA on the same negative number, SLT vs SLTU on the same disagreeing bit pattern, all passed
+
+## DAY 34: Immediate Generator
+
+### what immgen actually does
+- reads raw instr same as decoder, doesnt go through it. figures out format off opcode[6:0], then slices + sign extends the immediate for whatever format it is.
+- 6 formats total but R-type has no immediate at all, so really only 5 real cases plus a default that just spits 0.
+
+### why the bits are scrambled in the first place
+- Within the raw instruction opcode/rs1/rs2 stay pinned to the same bit position across every format, thats the whole reason decoder could slice unconditionally on day 31 without checking format first.
+- immediate is whats left over after those fixed fields eat their spots, so it gets pushed into leftover bit ranges instead of sitting clean and contiguous. worse for immgen, better for rs1/rs2 reads starting instantly without waiting on format detection first. tradeoff made on purpose.
+- B and J type are the two that actually scramble. I/S/U stay contiguous or close to it.
+
+### concatenation vs replication, two different curly brace
+- outer {a,b} is straight concatenation, glues pieces together msb to lsb in the order written.
+- inner {N{expr}} is replication, repeats expr N times then concats all N copies. {20{instr[31]}} = sign bit copied 20 times, thats how I did sign extension by hand.
+- widths gotta add up to exactly 32 every time, no automatic extension happening, I am constructing the full 32 bits myself field by field.
+
+### Needed assistance on making the encoded instructions for the testbench
+- The instructions needed in the testbench were very long and hard to make for the testing so it was important to get them right to test the immgen properly.
+- I thus had to resort to the online forces to help build my encoded instructions which I then used to make my testbench work after a few errors in the encoding the module was correct all along.
+
+### what got built
+- rtl/core/immgen.v: pure combinational immgen, all 6 formats, case on opcode, sign extension via replication, B/J bit reassembly per spec
+- tb/core/immgen_tb.v: 13 cases, positive+negative per format (I/S/B/U/J) plus R type default, all passed after fixing 3 bad instr encodings in the tb itself
