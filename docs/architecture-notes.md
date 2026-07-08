@@ -104,3 +104,29 @@
 ### what got built
 - rtl/core/regfile.v: 32x32 reg file, 2 async read ports, 1 sync write port, x0 masked on read only, no reset
 - tb/core/regfile_tb.v: 6 cases incl. x0 read, basic write/read, write-to-x0 attempt, same cycle read-before-write ordering, dual port read, all passed
+
+## DAY 33: ALU
+
+### 10 ops, one case statement
+- alu takes two 32 bit operands (a, b) and a 4 bit alu_ctrl select, does one of 10 ops, spits out a 32 bit result plus a zero flag.
+- ADD, SUB, AND, OR, XOR, SLL, SRL, SLT, SLTU, SRA. pure combinational, always @(*) with a case on alu_ctrl, no clock involved at all. purely reactive to whatever inputs show up.
+- like the decoder, alu doesnt know or care what instruction its serving. doesnt know funct3/funct7, doesnt know riscv encoding exists. alu_ctrl is its own clean encoding, mapping funct3/funct7 --> alu_ctrl is the ALU control units job (day 38), not this modules.
+
+### SRA vs SRL, side by side proof
+- ran the same negative number (0xFFFFFFFF, which is -1) thru both ops on the same shift amount.
+- SRL: 0xFFFFFFFF >> 1 = 0x7FFFFFFF. zero fills the top regardless of what the sign bit was doing.
+- SRA: 0xFFFFFFFF >>> 1 = 0xFFFFFFFF. sign bit keeps refilling, stays negative.
+
+### SLT vs SLTU, same trick
+- picked a and b where signed and unsigned interpretation straight up disagree: a=0xFFFFFFFF, b=1.
+- as signed, a is -1, so a<b is true (SLT = 1).
+- as unsigned, a is 4294967295, way bigger than 1, so a<b is false (SLTU = 0).
+- same bit pattern, opposite answer depending which operation reads it. this is the case that would catch a bug instantly if $signed() got left off somewhere, cause every other test case that isnt deliberately negative wouldnt even notice.
+
+### testbench approach
+- no clock here either, alu is combinational so just drive inputs, wait a beat (#10), check output against a hand written expected value in the $display.
+- covered all 10 ops, but the two that actually matter for edge cases (SLT/SLTU, SRL/SRA) I made sure to check whether the signed and unsigned disagree which was infact the case.
+
+### what got built
+- rtl/core/alu.v: 32 bit ALU, all 10 RV32I ops, alu_ctrl select via case statement, zero flag, $signed() used correctly for SRA (a only) and SLT (both operands)
+- tb/core/alu_32_tb.v: 11 checks covering all 10 ops incl. zero flag on SUB, SRL vs SRA on the same negative number, SLT vs SLTU on the same disagreeing bit pattern, all passed
