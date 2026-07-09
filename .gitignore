@@ -1,3 +1,4 @@
 *.vcd
 sim
 and_gate_sim
+sim_*
