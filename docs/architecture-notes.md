@@ -154,3 +154,39 @@
 ### what got built
 - rtl/core/immgen.v: pure combinational immgen, all 6 formats, case on opcode, sign extension via replication, B/J bit reassembly per spec
 - tb/core/immgen_tb.v: 13 cases, positive+negative per format (I/S/B/U/J) plus R type default, all passed after fixing 3 bad instr encodings in the tb itself
+
+## DAY 36: Data Memory + Memory Interface (Address Decoder)
+
+### why data memory is byte addressed, not word addressed
+- instr_mem only ever needed word indexing cause every instruction is a fixed 32 bit chunk, no smaller access ever happens to it.
+- data memory is different, sb/lb need to touch exactly 1 byte, sh/lh need exactly 2, sw/lw need all 4. if the array was declared word-wide there'd be no way to cleanly address a single byte inside a word.
+- so mem is declared as reg [7:0] mem [0:4095], 4KB, byte indexed. smallest addressable unit has to match the smallest access size the isa actually uses.
+
+### word groups and lanes
+- any given byte address falls into a "word group" (which 4-byte chunk it belongs to) and a "lane" within that group (its position 0 to 3 inside that chunk).
+- word group is addr/4, lane is addr%4, but in hardware thats addr[11:2] and addr[1:0] respectively, bit slicing not actual division so that the hardware is simpler and cheaper as explained before.
+- example: address 9 is word group 2 (bytes 8 to 11), lane 1.
+
+### byte_en masking on writes
+- writes are masked with a 4 bit byte_en signal, one bit per lane. sb only sets 1 bit, sh sets 2 adjacent bits, sw sets all 4. this is what keeps a byte write from touching the other 3 bytes sitting in the same word group.
+
+### endianness, same concat pattern as immgen
+- riscv is little endian, lowest address holds the least significant byte. storing 32'hAABBCCDD at address 0 means mem[0]=DD, mem[3]=AA.
+- reading a word back out is straight concatenation like immgen's sign extension, just byte by byte instead of bit replication: {mem[base+3], mem[base+2], mem[base+1], mem[base]}. highest address goes leftmost cause concatenation builds msb to lsb left to right, same rule from day 34, different use case.
+
+### combinational read, clocked write thus the same split as regfile
+- reads are async/combinational, same single cycle reasoning as regfile's read ports from day 32, address in data out same cycle, no waiting a cycle for it to show up.
+- writes are sync, only commit on posedge, same reasoning as regfile's write port, keeps two things from fighting over the same byte mid cycle.
+
+### the memory interface / address decoder (SCALABILITY!!)
+- this sits between the cpu's memory port and data_mem itself, doesnt replace data_mem, wraps it.
+- address map locked in the plan is 0x0000_0000 to 0x0000_0FFF is RAM, 0x1000_0000+ is reserved for future peripherals (mmio), everything else unmapped.
+- today it just forwards ram-range addresses straight to data_mem and stubs everything else, mmio/unmapped reads return 0, writes get dropped silently. nothing lives in the mmio range yet, just reserved so ram never gets handed that address space by accident.
+- mem_write only ever reaches data_mem when the address decodes as ram. tested this directly, wrote to 0x1000_0000, confirmed address 0 was still untouched after.
+- this is a very important component as it allows me to scale this project beyond if thats ever required.
+
+### what got built
+- rtl/core/data_mem.v: 4KB byte-addressed RAM, byte/half/word access via byte_en mask, clocked writes, combinational reads
+- tb/core/data_mem_tb.v: 5 cases (sw, sb lane isolation, sh neighbor-byte preserved, mem_read=0 gating, unwritten address), all passed
+- rtl/core/mem_interface.v: address decoder, ram range forwarding + mmio/unmapped stubs, write gated by is_ram
+- tb/core/mem_interface_tb.v: 7 cases (ram write/read, upper boundary at 0xFFC, stray write to mmio rejected + ram confirmed untouched, mmio stub, unmapped stub), all passed
