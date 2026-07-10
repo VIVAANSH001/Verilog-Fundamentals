@@ -190,3 +190,36 @@
 - tb/core/data_mem_tb.v: 5 cases (sw, sb lane isolation, sh neighbor-byte preserved, mem_read=0 gating, unwritten address), all passed
 - rtl/core/mem_interface.v: address decoder, ram range forwarding + mmio/unmapped stubs, write gated by is_ram
 - tb/core/mem_interface_tb.v: 7 cases (ram write/read, upper boundary at 0xFFC, stray write to mmio rejected + ram confirmed untouched, mmio stub, unmapped stub), all passed
+
+## DAY 37: Branch Comparator + Control Unit
+
+### why branch comparator is separate hardware, not reused ALU
+- could technically do beq/bne/blt etc by running rs1-rs2 through the alu and checking the zero flag or sign bit, some single cycle designs actually do this.
+- went with dedicated comparator hardware instead, cause the alu's job list stays exactly what it was on day 33 (10 ops, alu_ctrl driven), no branch-specific hijacking of the zero flag or extra muxing on alu inputs just to serve branches.
+- comparator takes rs1_data, rs2_data straight from regfile plus funct3 (funct3 already encodes which branch type it is, beq=000 up to bgeu=111), one case statement, one output: branch_taken. pure combinational, same as everything else built so far.
+
+### control unit is the actual "main decoder"
+- reads opcode straight off instr_decoder (day 31), thats the seam CU was always meant to consume, decoder doesnt know about CU and CU doesnt re-slice the instruction itself.
+- one big case statement on opcode, sets a pile of control signals: reg_write, mem_read, mem_write, branch, jump, alu_src, result_src, alu_op, mem_size, mem_unsigned.
+- CU decides, doesnt execute. same architecture rule as pc.v on day 29, control logic and datapath logic stay in separate modules, CU just raises flags, doesnt touch a single data value itself.
+
+### result_src grew a 4th case i didnt expect
+- started with 3: 00=alu result, 01=mem data, 10=pc+4 (for jal/jalr link register).
+- lui broke the pattern. alu_32 only has 10 defined ops (add through sra), no "just output b" op exists. first pass had lui setting alu_op to a made up passthrough code, but theres no alu_ctrl value on the day 33 side to actually catch it.
+- fixed by giving result_src a 4th value instead, 11 = immediate passthrough. lui skips the alu completely, regfile write data comes straight from immgen. cleaner than teaching the alu a fake op just for one instruction.
+
+### mem_size/mem_unsigned exist but dont plug into anything yet
+- mem_interface (day 36) wants a byte_en[3:0] straight up, not a size code. CU only sees opcode+funct3, has no visibility into the address, so it literally cant compute byte_en itself, that needs addr[1:0] too (which lane) not just the size.
+- so CU outputs the funct3-derived size (00/01/10 = byte/half/word) and mem_unsigned (for lbu/lhu zero extend vs sign extend), leaves the actual byte_en generation and load sign/zero extend mux as open datapath work, not built yet.
+- keeps the same seam discipline as everything else so far, decoder doesnt know about mem, CU doesnt know about addressing, data_mem doesnt know about ram vs mmio. each piece stays ignorant of what it doesnt need to know.
+
+### auipc has a known gap, flagged not fixed
+- auipc needs pc+imm, not rs1+imm like every other alu_src=1 case. alu only takes two data operands (a,b) off the datapath, no pc input wired to it yet.
+- CU decodes auipc structurally the same as the other alu_src=1 cases for now, real fix is an alu input-a mux (rs1 vs pc) that has to happen at top level wiring, not something CU alone can solve. noted in the code, not resolved yet, day 39 problem.
+
+### what got built
+- rtl/core/branch_comp.v: standalone branch comparator, 6 branch types off funct3, signed compares for blt/bge, unsigned for bltu/bgeu
+- tb/core/branch_comp_tb.v: 13 checks include taken+not-taken for every branch type, signed/unsigned disagreement case, invalid funct3 safety default, all passed
+- rtl/core/control_unit.v: main decoder, opcode-driven case covering r-type/i-type/load/store/branch/jal/jalr/lui/auipc, outputs reg_write/mem_read/mem_write/branch/jump/alu_src/result_src/alu_op/mem_size/mem_unsigned
+- tb/core/control_unit_tb.v: 11 checks, one per opcode class plus an unmapped-opcode safety default, all passed
+- known open seams for day 39: byte_en generator (mem_size + addr[1:0] -> byte_en), load sign/zero extend mux (mem_unsigned), alu input-a pc mux (auipc)
