@@ -223,3 +223,25 @@
 - rtl/core/control_unit.v: main decoder, opcode-driven case covering r-type/i-type/load/store/branch/jal/jalr/lui/auipc, outputs reg_write/mem_read/mem_write/branch/jump/alu_src/result_src/alu_op/mem_size/mem_unsigned
 - tb/core/control_unit_tb.v: 11 checks, one per opcode class plus an unmapped-opcode safety default, all passed
 - known open seams for day 39: byte_en generator (mem_size + addr[1:0] -> byte_en), load sign/zero extend mux (mem_unsigned), alu input-a pc mux (auipc)
+
+## DAY 38: ALU Control Unit
+
+### what alu_control actually decides
+- takes control_unit's alu_op[1:0] (day 37) plus funct3/funct7 straight off instr_decoder (day 31), doesnt reslice the instruction itself, same seam discipline as everything else.
+- alu_op=00 is dead simple, load/store/jalr/auipc all just want base+offset, alu_ctrl=ADD no matter what funct3/funct7 happen to contain, they're not even looked at.
+- alu_op=01 (branch) reaches alu_control too but doesnt matter, branch_comp does the actual compare on separate hardware (day 37), nothing ever reads the alu's output for a branch instruction. alu_ctrl defaults to ADD here purely so the signal isnt left undriven, not a real answer.
+- alu_op=10 is the only branch that actually needs funct3/funct7 to figure out the real op, r-type and i-type ALU-op instructions both land here.
+
+### the bug alu_src catches
+- funct3=000 covers 3 different instructions depending on context: r-type ADD, r-type SUB, and i-type ADDI. funct3 alone cant tell them apart.
+- naive fix is check funct7[5], 0=ADD 1=SUB, works fine for r-type. breaks immediately for ADDI though, cause instr_decoder slices funct7=instr[31:25] unconditionally regardless of format (day 31 rule, decoder doesnt know format), and for i-type that bit range isnt a real funct7 at all, its just leftover immediate bits. addi x1,x2,-1 has an all-1s immediate, funct7[5] reads as 1, would get silently misread as SUB.
+- fix: gate the funct7[5] check behind alu_src==0 (r-type only, alu_src comes straight off control_unit, no new signal needed). if alu_src==1 (i-type) at funct3=000, its ADDI, funct7 bits are garbage, dont even look at them, default straight to ADD.
+
+### funct3=101 breaks the pattern, funct7 is real on both sides
+- same funct3 collision shows up again, r-type SRL vs SRA. but this time the i-type version (SRLI/SRAI) is NOT garbage-in-that-slot like ADDI was.
+- shift amount is only 5 bits (instr[24:20]), leaves instr[31:25] unused, and riscv spec deliberately fixes those bits (0000000=SRLI, 0100000=SRAI), same position and meaning as r-type funct7. so funct7[5] is legit here regardless of alu_src, no i/r-type gate needed for this one line, unlike funct3=000.
+- point being alu_src alone isnt a blanket "trust funct7 or not" switch, it depends on which i-type instruction specifically, ADDI/ANDI/ORI/etc funct7 bits are fake, SLLI/SRLI/SRAI funct7 bits are real. funct3 is what tells you which situation youre in.
+
+### what got built
+- rtl/core/alu_control.v: alu_op + funct3 + funct7 + alu_src --> alu_ctrl, outer case on alu_op, inner case on funct3 for the alu_op=10 branch, funct7[5] gated by alu_src only where it needs to be (funct3=000), ungated where funct7 is always legit (funct3=101)
+- tb/core/alu_control_tb.v: 12 cases covering alu_op=00 passthrough, r-type ADD/SUB, the "ADDI with garbage funct7" case specifically (proves the alu_src gate works), i-type SRLI/SRAI (proves funct7 stays trusted there), remaining no ambiguity ops (SLL/SLT/SLTU/XOR/OR/AND), branch dont care case
