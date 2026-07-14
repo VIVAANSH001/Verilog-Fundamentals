@@ -284,3 +284,27 @@
 - rtl/soc/soc.v: core + instr_mem + mem_interface, pure wiring, no logic, no changes needed for the deferred jalr fix since jump never leaves core.v
 - control_unit.v: added alu_a_pc output, set only in OP_AUIPC case, control_unit_tb.v updated and re-passed including the new auipc check
 - verification status: structural only, all 13 files elaborate clean under iverilog -Wall, zero errors zero warnings. no functional test run yet, no testbench exists for core.v/soc.v, thats day 41's job (day 40 is warning cleanup first)
+
+## DAY 40: Warning Cleanup Pass
+
+### the whole day in one line
+- ran the full repo compile, came back clean both times, nothing to actually fix. Spent most of the time making sure "clean" was real and not just -Wall missing stuff again like it did with alu_zero.
+
+### -Wall alone isnt enough, already proved that
+- day 39 handoff flagged that -Wall didnt catch alu_zero being dead, so cant just trust one clean compile and call it done. ran two passes instead: plain `-Wall` and `-Wall -g2012` (stricter 2012 SystemVerilog checking). both came back silent, zero errors zero warnings across all 12 rtl files.
+
+### manual sweep, since the compiler wont catch everything
+- went through core.v's full wire list by hand, checked every signal actually gets consumed somewhere downstream instead of just trusting the compiler.
+- everything traced through clean except the one already known case: alu_zero. wired up off alu_32, never read anywhere in core.v. confirms day 39s note was right and that this is the only loose end in the whole module.
+
+### alu_zero decision, closing the loop from day 39
+- two options going in: strip the zero port off alu_32.v entirely, or leave it defined but unconnected in core.v.
+- went through with leaving it unconnected. alu_32.v is closed out day 33 work, ripping the port out means reopening a finished module for a signal thats not actually causing a problem. also might genuinely want an alu-based zero check down the line if the design ever changes, cheap to keep the option open.
+- documenting this here so its clearly a decision, not an oversight that got missed twice.
+
+### what got built
+- no new rtl, no new testbenches, day 40 is pure verification
+- confirmed clean compile under `iverilog -Wall -o sim_top $(find rtl -name "*.v")` and `iverilog -Wall -g2012 -o sim_top $(find rtl -name "*.v")`, both zero warnings zero errors, all 12 files
+- manual signal sweep of core.v, confirmed alu_zero is the only unread signal in the module
+- decision made: alu_zero stays defined in alu_32.v, stays unconnected in core.v, not a bug, documented and deliberate
+- day 41 is next: first real functional test, addi x1,x0,5 through the pipeline
