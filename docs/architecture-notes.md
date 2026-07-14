@@ -245,3 +245,42 @@
 ### what got built
 - rtl/core/alu_control.v: alu_op + funct3 + funct7 + alu_src --> alu_ctrl, outer case on alu_op, inner case on funct3 for the alu_op=10 branch, funct7[5] gated by alu_src only where it needs to be (funct3=000), ungated where funct7 is always legit (funct3=101)
 - tb/core/alu_control_tb.v: 12 cases covering alu_op=00 passthrough, r-type ADD/SUB, the "ADDI with garbage funct7" case specifically (proves the alu_src gate works), i-type SRLI/SRAI (proves funct7 stays trusted there), remaining no ambiguity ops (SLL/SLT/SLTU/XOR/OR/AND), branch dont care case
+
+## DAY 39: Core + SoC Top Level Wiring
+
+### core vs soc split, why instr_mem/mem_interface live outside core
+- core.v is the cpu itself, all logic, zero memory besides regfile. soc.v is the box around it, just wiring, that plugs core's two ports (fetch port, mem port) into instr_mem and mem_interface.
+- reason for the split: portability and testability. if instr_mem/mem_interface were inside core.v, swapping ram size or adding a peripheral means editing the cpu itself. keeping them out means core never changes, only the soc around it does. also means core can get testbenched with fake instruction/mem_rdata inputs directly, no real memory needed.
+- regfile is the one exception, lives inside core, but thats a different kind of memory, tiny/fast/directly wired into the datapath every cycle, not something the cpu "reaches out for" the way it does ram.
+
+### seam 1: byte_en generator needs address AND size, not just one
+- mem_size alone only says how many lanes get enabled, doesnt say which ones. alu_result[1:0] is what actually picks the starting lane, same bottom-2-bits-of-address logic from day 36's data_mem, just now on the producer side instead of the consumer side.
+- word stores (sw) dont even look at alu_result[1:0], byte_en just goes straight to 4'b1111 regardless, only byte/half stores need lane selection at all.
+
+### seam 2: load extend is two stage, lane select then sign/zero extend
+- data_mem always hands back the entire 32 bit word on a read, never just the requested byte/half. so alu_result[1:0] gets reused a second time here, same bits, different job: on write it picked which lanes to enable, on read it picks which lane to actually keep out of mem_rdata.
+- after lane select, mem_unsigned decides zero extend (lbu/lhu, pad with 0) vs sign extend (lb/lh, replicate the sign bit into the top bits). mixing these up doesnt crash anything, just silently turns negative numbers positive, exact same category of bug as forgetting $signed() back on day 33's alu.
+
+### seam 3: auipc a-mux, closes the day 37 gap
+- day 37 flagged this and left it open on purpose, alu only takes two data operands off the datapath, no pc input existed yet.
+- fix is one wire: alu_a = alu_a_pc ? pc_current : rs1_data. alu_a_pc is a new 1 bit signal off control_unit, set only for auipc. every other instruction alu_a just falls through to rs1_data like before, nothing else changes.
+- lui also sets alu_src=1 same as auipc but does NOT set alu_a_pc, cause lui's result never even touches the alu, result_src=11 routes imm straight to writeback (the day 37 fix). alu_a_pc genuinely doesnt matter for lui since nothing reads alu_result for it.
+
+### seam 4: branch/jump adder shared on purpose
+- pc_pc_imm = pc_current + imm gets used by both branches and jal. not a coincidence, both instructions are computing the literal same formula, only difference is which imm format immgen picked upstream (b-type vs j-type) and whether the result actually gets taken (branch_taken gates it, jal always takes it).
+- same "one piece of hardware, control logic decides how its used" pattern as the alu itself back on day 33, alu_op picks behavior instead of 10 separate op-specific circuits, here one adder gets reused instead of two.
+
+### seam 5 + 6: pc_next mux and the jalr coupling (flagging this like day 38 flagged funct7)
+- pc_next is a priority mux: branch taken > jalr > jal > default pc+4. jalr_target is NOT the return address, thats a mixup worth remembering, jalr_target is just where pc jumps to next (alu_result with bit 0 forced to 0 per spec). return address is a totally separate value, pc_plus4, going to a totally separate place, the writeback mux via rd. jal/jalr set the return addr via result_src=10, pc_next mux has nothing to do with that side.
+- the actual thing worth flagging: jalr gets detected in the mux as `jump && alu_src`, not a dedicated signal. this works today ONLY because jalr happens to be the sole instruction where both jump=1 and alu_src=1 are true simultaneously, its an implicit coupling between two signals that each mean something else on their own (jump = "this is a jump", alu_src = "alu's second input is imm"), not an explicit "this is jalr" signal.
+- works correctly today because of what currently exists in the isa, not because the code says so directly. if the isa ever grows (rv32m, compressed instrs, anything else that could land on alu_src=1 + jump=1 without being jalr) this silently breaks with no warning, just wrong pc_next.
+
+### alu_zero, unused and thats fine
+- alu_32 still outputs a zero flag, wired up, never read anywhere in core.v. not a bug, just a leftover from the alu's original generic design before branch_comp existed as dedicated hardware (day 37). branch_comp made alu_zero redundant for branch detection, some single-cycle designs do use the alu+zero-flag trick for beq but I went the dedicated comparator route instead.
+- -Wall didnt actually flag this on recompile, worth keeping an eye on rather than assuming day 40's warning pass catches it automatically.
+
+### what got built
+- rtl/core/core.v: top level cpu, instantiates every day 29-38 module, all six day 39 seams (byte_en gen, load extend mux, auipc a-mux, branch/jump adder, pc_next mux, jalr bit-0 clear)
+- rtl/soc/soc.v: core + instr_mem + mem_interface, pure wiring, no logic, no changes needed for the deferred jalr fix since jump never leaves core.v
+- control_unit.v: added alu_a_pc output, set only in OP_AUIPC case, control_unit_tb.v updated and re-passed including the new auipc check
+- verification status: structural only, all 13 files elaborate clean under iverilog -Wall, zero errors zero warnings. no functional test run yet, no testbench exists for core.v/soc.v, thats day 41's job (day 40 is warning cleanup first)

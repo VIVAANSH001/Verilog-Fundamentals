@@ -5,10 +5,10 @@ module control_unit_tb;
     reg [6:0] opcode;
     reg [2:0] funct3;
 
-    wire reg_write, mem_read, mem_write, branch, jump, alu_src, mem_unsigned;
+    wire reg_write, mem_read, mem_write, branch, jump, alu_src, mem_unsigned, alu_a_pc;
     wire [1:0] result_src, alu_op, mem_size;
 
-    control_unit uut (.opcode(opcode),.funct3(funct3),.reg_write(reg_write),.mem_read(mem_read),.mem_write(mem_write),.branch(branch),.jump(jump),.alu_src(alu_src),.result_src(result_src),.alu_op(alu_op),.mem_size(mem_size),.mem_unsigned(mem_unsigned));
+    control_unit uut (.opcode(opcode),.funct3(funct3),.reg_write(reg_write),.mem_read(mem_read),.mem_write(mem_write),.branch(branch),.jump(jump),.alu_src(alu_src),.result_src(result_src),.alu_op(alu_op),.mem_size(mem_size),.mem_unsigned(mem_unsigned),.alu_a_pc(alu_a_pc));
 
     initial begin
         $dumpfile("control_unit.vcd");
@@ -51,9 +51,9 @@ module control_unit_tb;
         opcode = 7'b0110111; funct3 = 3'b000; #10;
         $display("LUI: rw=%b rs=%b (expect 1 11)", reg_write, result_src);
 
-        // AUIPC: expect reg_write=1, alu_src=1, alu_op=00
+        // AUIPC: expect reg_write=1, alu_src=1, alu_op=00, alu_a_pc=1
         opcode = 7'b0010111; funct3 = 3'b000; #10;
-        $display("AUIPC: rw=%b as=%b op=%b (expect 1 1 00)",reg_write,alu_src,alu_op);
+        $display("AUIPC: rw=%b as=%b op=%b apc=%b (expect 1 1 00 1)",reg_write,alu_src,alu_op,alu_a_pc);
 
         // unmapped opcode: everything should sit at safe defaults
         opcode = 7'b1111111; funct3 = 3'b000; #10;

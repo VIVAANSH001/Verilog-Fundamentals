@@ -4,7 +4,7 @@
 // are generic signals that flow into the memory interface (mem_interface.v),
 // which is the only thing that knows about the address map. this module
 // doesn't know or care what's on the other side of the memory port.
-module control_unit (input [6:0] opcode,input [2:0] funct3,output reg reg_write,output reg mem_read,output reg mem_write,output reg branch,output reg jump,output reg alu_src,output reg [1:0] result_src,output reg [1:0] alu_op,output reg [1:0] mem_size,output reg mem_unsigned);
+module control_unit (input [6:0] opcode,input [2:0] funct3,output reg reg_write,output reg mem_read,output reg mem_write,output reg branch,output reg jump,output reg alu_src,output reg [1:0] result_src,output reg [1:0] alu_op,output reg [1:0] mem_size,output reg mem_unsigned,output reg alu_a_pc);
 
     localparam OP_RTYPE = 7'b0110011;
     localparam OP_ITYPE = 7'b0010011;
@@ -28,7 +28,8 @@ module control_unit (input [6:0] opcode,input [2:0] funct3,output reg reg_write,
         result_src = 2'b00;
         alu_op = 2'b00;
         mem_size = funct3[1:0];  // only meaningful for load/store opcodes
-        mem_unsigned = funct3[2];    // only meaningful for load opcode
+        mem_unsigned = funct3[2];  // only meaningful for load opcode
+        alu_a_pc = 1'b0;
 
         case (opcode)
             OP_RTYPE: 
@@ -93,6 +94,7 @@ module control_unit (input [6:0] opcode,input [2:0] funct3,output reg reg_write,
                 reg_write = 1'b1;
                 alu_src = 1'b1;
                 alu_op = 2'b00;
+                alu_a_pc = 1'b1;
             end
 
             default: 
