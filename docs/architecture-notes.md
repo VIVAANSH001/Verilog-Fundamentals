@@ -308,3 +308,19 @@
 - manual signal sweep of core.v, confirmed alu_zero is the only unread signal in the module
 - decision made: alu_zero stays defined in alu_32.v, stays unconnected in core.v, not a bug, documented and deliberate
 - day 41 is next: first real functional test, addi x1,x0,5 through the pipeline
+
+## DAY 41: First Functional Instruction (soc_tb, formal)
+
+### hierarchical dot path referencing
+- testbench cant just probe a top level port for this, x1s value lives buried inside regfile inside core inside soc, none of that is exposed at soc_tb's level normally.
+- icarus lets you reach straight through instance names from the tb: uut.u_core.u_regfile.registers[1]. each dot is one level deeper into the module hierarchy, uut(soc) --> u_core(core) --> u_regfile(regfile) --> registers[1](the actual reg array slot).
+- from what I learnt this only works in simulations not in actual synthesis so that was a important note I took.
+
+### hhat was day 41 for
+- today I ran only one instruction (addi x1,x0,5), proper $display with inline expect comment, single clean pass, x1 = 5 (expect 5) confirmed.
+- the main goal for today was to make sure my cpu works but on one instruction only and thankfully it worked perfectly.
+
+### what got built
+- tb/soc/soc_tb.v: single instruction test, addi x1,x0,5, hierarchical dot path read of registers[1], $display with expect comment, single @(posedge clk) + #1 settle
+- programs/test1.hex: 1 instruction (00500093)
+- result: x1 = 5 (expect 5), confirmed pass, $readmemh range warning present as always, expected/harmless
