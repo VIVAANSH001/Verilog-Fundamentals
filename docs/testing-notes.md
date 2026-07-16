@@ -40,3 +40,22 @@ for nostalgia purposes
 ### what got built
 - programs/test3.hex: 14 instructions, I-type arithmetic coverage + edge cases
 - tb/soc/soc_i_type_tb.v: 11 checks, same hierarchical dot-path style as soc_r_type_tb.v
+
+## DAY 46: Load Testing
+
+### what was tested
+- all 5 load ops: lw, lh, lb, lhu, lbu, through the actual core--> mem_interface --> data_mem path 
+- preloaded two known words directly into ram via testbench (word 0 = 0xAABBCCDD, word 4 = 0x12345678) instead of relying on sw, since stores arent tested yet
+- edge case: word 0 has mixed sign bits across every byte/half --> lb/lbu and lh/lhu genuinely diverge everywhere (x2/x3, x5/x6, x8/x9)
+- edge case: word 4 has every byte's sign bit clear --> lb and lbu (x10/x11) come out identical, proves the day 37 insight that signed vs unsigned only diverges when the top bit is 1
+- lane selection across all 4 byte offsets (0,1,2,3) and both half-word offsets (0,2)
+
+### results
+- all 12 checks passed clean, first try, no bugs
+
+### bugs hit
+- none.
+
+### what got built
+- programs/test4.hex: 12 instructions, pure loads off x0 base, no setup instructions needed since memory preloaded directly
+- tb/soc/soc_load_tb.v: 12 checks, preloads ram hierarchically same technique as data_mem_tb.v, then reads through the full core
