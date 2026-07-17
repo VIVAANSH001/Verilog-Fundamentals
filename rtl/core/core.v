@@ -80,7 +80,44 @@ module core (input wire clk,input wire rst,input wire [31:0] instruction,input w
 
     // Memory address / data out
     assign mem_addr = alu_result;   // LOAD/STORE address = rs1+imm, computed by ALU
-    assign mem_wdata = rs2_data;
+    // assign mem_wdata = rs2_data; --> buggy code does not align the word for storing
+    
+    // seam 1b: store data positioning (similar to seam 1's byte_en generator).
+    reg [31:0] mem_wdata_r;
+    always @(*)
+    begin
+        case (mem_size)
+            2'b00: // byte
+                case (alu_result[1:0])
+                    2'b00: 
+                    begin
+                        mem_wdata_r = {24'b0, rs2_data[7:0]};
+                    end
+                    2'b01: 
+                    begin
+                        mem_wdata_r = {16'b0, rs2_data[7:0], 8'b0};
+                    end
+                    2'b10: 
+                    begin
+                        mem_wdata_r = {8'b0, rs2_data[7:0], 16'b0};
+                    end
+                    2'b11: 
+                    begin
+                        mem_wdata_r = {rs2_data[7:0], 24'b0};
+                    end
+                endcase
+            2'b01: // half
+            begin
+                mem_wdata_r = alu_result[1] ? {rs2_data[15:0], 16'b0} : {16'b0, rs2_data[15:0]};
+            end
+            default: // word
+            begin
+                mem_wdata_r = rs2_data;
+            end
+        endcase
+    end
+    assign mem_wdata = mem_wdata_r;
+
 
     // seam 1: byte_en generator
     reg [3:0] byte_en_r;
