@@ -80,3 +80,22 @@ for nostalgia purposes
 - programs/test5.hex: 28 instructions, full sb lane coverage (0 to 3) + sh alignment coverage (0 to 1, 2 to 3) + sw checked with abcd0123
 - tb/soc/soc_store_tb.v: 7 checks, readback-based verification using proven loads
 - core.v: added mem_wdata_r positioning mux (real RTL fix, not just test infra)
+
+## DAY 48: Branch Testing
+
+### what was tested
+- all 6 branch conditions: beq, bne, blt, bge, bltu, bgeu, each in both directions (taken and not taken) with 12 base cases
+- this one's structurally different from every day before it cause branches dont write a register on their own, so checking a register after a branch tells you nothing about whether the branch actually fired. had to prove the PC itself went somewhere different
+- used the sentinel marker technique: plant a `111` marker instruction on the fall-through path and a `222` marker at the taken target, with a `jal x0` right after the fall-through marker so it cant accidentally fall into the taken marker too
+- edge case: same register comparison for beq/bne (rs1 and rs2 both literally x1, not just equal values in two different registers) this proves the comparator handles register aliasing.
+- edge case: signed vs unsigned disagreement for blt/bltu and bge/bgeu with x1=0xFFFFFFFF, x2=3 used identically across blt/bltu and bge/bgeu pairs, and they come out opposite each time (blt taken/bltu not taken, bge not taken/bgeu taken), cause 0xFFFFFFFF reads as -1 signed but huge unsigned, same trick as day 44/45's slt/sltu and slti/sltiu edge cases just now proven through actual PC redirection instead of a register value
+
+### results
+- all 14 checks passed clean, first try, no bugs
+
+### bugs hit
+- none.
+
+### what got built
+- programs/test6.hex: 82 instructions, 14 branch test blocks (setup + branch + fall-through marker + skip jump + taken marker) covering all 6 conditions x2 directions + same reg edge case + signed/unsigned disagreement pairs
+- tb/soc/soc_branch_tb.v: 14 checks, same hierarchical dot path style as prior days, checks sentinel registers x10 to x23
