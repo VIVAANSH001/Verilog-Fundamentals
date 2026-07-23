@@ -73,3 +73,30 @@ converting the single cycle rv32i core into a 5 stage pipeline (if/id/ex/mem/wb)
 - rtl/core/if_id_reg.v, id_ex_reg.v, ex_mem_reg.v, mem_wb_reg.v
 - tb/core/pipeline_regs_tb.v
 - no core.v/soc.v changes, wiring starts day 52
+
+## DAY 52: IF Stage Pipelined
+
+### what was covered
+- decided to build core_pipelined.v as a brand new file instead of converting core.v in place, keeping the phase 3 single cycle core fully intact as a reference to differentiate against once hazards show up in week 9
+- wired the actual first pipelined stage: pc.v feeding into if_id_reg.v inside core_pipelined.v
+- pc_next is naive for now, just pc_current+4 every cycle, no branch/jump feedback wired in yet since that resolves in EX now (not same cycle like single cycle was) and control hazards are week 9 stuff
+
+### core_pipelined.v
+- instantiates pc.v unchanged, no modifications needed there
+- pc_next always = pc_current + 4, straight line fetch, single cycle version's branch/jump priority mux logic is intentionally not here yet, that feedback path (branch_taken reaching back to IF) is a plain combinational wire, not something that flows through pipeline registers, comes later
+- instantiates if_id_reg.v, latches instruction + pc_current every cycle
+- temporarily exposes the if/id reg outputs directly as core outputs since ID isn't wired in yet (day 53), this'll go away once ID stage lands
+
+### testing
+- new testbench core_pipelined_if_tb.v, instantiates core_pipelined.v (uut) + instr_mem.v (u_instr_mem) directly, not going through soc.v yet since only IF exists so far
+- ran fib.hex through it (instr_mem.v's default), checked pc incrementing by 4 each cycle and if_id_reg holding the PREVIOUS cycle's instruction/pc one cycle behind, which is exactly what a pipeline register is supposed to do
+- reset case checked first: everything zeros out as expected
+- 4 checks total (reset + 3 cycles), all matched predicted values exactly, compiled and ran clean first try
+
+### bugs hit
+- none
+
+### what got built
+- rtl/core/core_pipelined.v
+- tb/core/core_pipelined_if_tb.v
+- core.v and soc.v untouched, phase 3 still fully intact and runnable standalone
