@@ -6,8 +6,6 @@ Converting the single cycle RV32I core into a 5 stage pipeline (IF/ID/EX/MEM/WB)
 
 converting the single cycle rv32i core into a 5 stage pipeline (if/id/ex/mem/wb). separate log from testing-notes.md cause phase 3 was proving instructions work one by one, this is a structural rebuild so it needs its own space. mem_interface.v stays exactly as is through all of this, thats the whole point of building that seam back in phase 3, MEM stage just drives it the same way the single cycle core did.
 
----
-
 ## DAY 50: Pipeline Theory + Datapath Sketch
 
 ### what was covered
@@ -41,3 +39,37 @@ converting the single cycle rv32i core into a 5 stage pipeline (if/id/ex/mem/wb)
 ### what got built
 - started docs/pipeline-notes.md as the phase 4 log
 - no rtl changes yet, purely mental model day
+
+## DAY 51: Pipeline Registers (IF/ID, ID/EX, EX/MEM, MEM/WB)
+
+### what was covered
+- built the 4 pipeline register modules sketched in day 50
+- figured out what signals each one needs to carry, not just for the next stage but for whatever LATER stage still needs it (pc survives to EX for AUIPC, imm survives to WB for LUI)
+- kept them standalone for now, not wired into core.v yet, thats days 52 to 55
+
+### if_id_reg.v
+- latches instr + pc_current out of IF so ID can decode while IF fetches next
+
+### id_ex_reg.v
+- carries rs1_data/rs2_data/imm + rd/rs1/rs2 (addresses too, not just values, EX doesnt need them but week 9 forwarding will need to know WHICH register a value came from)
+- carries every control_unit.v signal since control only runs once in ID but EX/MEM/WB downstream each need a subset
+
+### ex_mem_reg.v
+- carries alu_result (doubles as mem addr), rs2_data (raw store data, mem_interface.v still does lane positioning), pc/imm/rd for WB, plus reg_write/mem_read/result_src/mem_size/mem_unsigned
+- did NOT carry branch_taken, pc redirect is a feedback path handled at top level wiring later, not something that flows forward
+
+### mem_wb_reg.v
+- carries alu_result, load_data (already extended), pc, imm, rd, reg_write, result_src, basically just the writeback mux's inputs held one more cycle
+
+### testing
+- one testbench (pipeline_regs_tb.v), proved if_id_reg: reset clears to 0, two back to back latches grabbed input values correctly on each edge
+- didnt duplicate for the other 3, same always block pattern just more fields, if_id_reg passing proves the pattern works
+- compiled clean first try, all checks passed as predicted
+
+### bugs hit
+- none
+
+### what got built
+- rtl/core/if_id_reg.v, id_ex_reg.v, ex_mem_reg.v, mem_wb_reg.v
+- tb/core/pipeline_regs_tb.v
+- no core.v/soc.v changes, wiring starts day 52
