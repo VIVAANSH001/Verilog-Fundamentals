@@ -100,3 +100,33 @@ converting the single cycle rv32i core into a 5 stage pipeline (if/id/ex/mem/wb)
 - rtl/core/core_pipelined.v
 - tb/core/core_pipelined_if_tb.v
 - core.v and soc.v untouched, phase 3 still fully intact and runnable standalone
+
+## DAY 53: ID Stage Pipelined
+
+### what was covered
+- wired the actual biggest stage so far into core_pipelined.v, instr_decoder + regfile (read side) + immgen + control_unit, all feeding id_ex_reg
+- flagged something worth remembering going forward: regfile.v is now the first module shared across two pipeline stages at once instead of each stage owning its own logic. ID reads it this stage, WB will write it several stages ahead once WB exists (day 55), both hitting the same physical instance
+- decided flat wiring for id_ex_reg's inputs, one line per signal same as core.v's existing style, not bothering with any packed/grouped bus for this project, thats a next project idea (lets not jinx it) if anything
+
+### core_pipelined.v additions
+- instr_decoder.v slices if_id_instr_out into opcode/rd/rs1/rs2/funct3/funct7
+- immgen.v generates imm straight off if_id_instr_out
+- control_unit.v decodes opcode+funct3 into every control signal
+- regfile.v instantiated with write port tied off for now (we=0, write_addr=0, write_data=0) since WB doesnt exist yet, thats getting hooked up day 55
+- all of the above feeds id_ex_reg.v, which was just sitting built and unused since day 51, first time its actually wired in
+- id_ex_reg's outputs mostly dangle unconnected still (pc_out, rs1_out, rs2_out, funct3_out, funct7_out, mem_size_out, mem_unsigned_out, alu_a_pc_out) since EX doesnt exist yet to consume them, thats fine for now, flagged to come back and hook those up tomorrow
+
+### testing
+- new testbench core_pipelined_id_tb.v, small dedicated program (id_stage_test.hex) instead of reusing fib.hex, needed distinct control signal coverage across R-type/I-type/load/store/branch in one short program
+- preloaded x1=77 x2=13 directly into regfile before the ID checks so rs1_data/rs2_data being carried into id_ex_reg actually proves something instead of just showing zeros
+- 5 checks, one per instruction (add, addi, lw, sw, beq), each checking rd/rs1_data/rs2_data/imm plus every control signal control_unit produces
+- all 5 matched predicted values exactly, compiled and ran clean first try
+
+### bugs hit
+- none in logic, except forgetting the signals needed time and time again.
+
+### what got built
+- rtl/core/core_pipelined.v (ID stage added)
+- programs/id_stage_test.hex
+- tb/core/core_pipelined_id_tb.v
+- core.v and soc.v still untouched, phase 3 still fully intact and runnable standalone
