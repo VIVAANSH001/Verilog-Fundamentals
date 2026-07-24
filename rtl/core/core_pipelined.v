@@ -21,7 +21,18 @@ module core_pipelined (
     output wire id_ex_branch_out,
     output wire id_ex_jump_out,
     output wire id_ex_alu_src_out,
-    output wire [1:0] id_ex_alu_op_out);
+    output wire [1:0] id_ex_alu_op_out,
+    output wire [31:0] ex_mem_alu_result_out,
+    output wire [31:0] ex_mem_rs2_data_out,
+    output wire [31:0] ex_mem_pc_out,
+    output wire [31:0] ex_mem_imm_out,
+    output wire [4:0] ex_mem_rd_out,
+    output wire ex_mem_reg_write_out,
+    output wire ex_mem_mem_read_out,
+    output wire ex_mem_mem_write_out,
+    output wire [1:0] ex_mem_result_src_out,
+    output wire [1:0] ex_mem_mem_size_out,
+    output wire ex_mem_mem_unsigned_out);
 
     // IF stage
     reg [31:0] pc_next;
@@ -59,6 +70,14 @@ module core_pipelined (
     wire [31:0] rs1_data, rs2_data;
     regfile u_regfile (.clk(clk),.we(1'b0),.write_addr(5'b0),.write_data(32'b0),.read_addr1(rs1),.read_addr2(rs2),.read_data1(rs1_data),.read_data2(rs2_data));
 
+    wire [31:0] id_ex_pc_out;
+    wire [4:0] id_ex_rs1_out, id_ex_rs2_out;
+    wire [2:0] id_ex_funct3_out;
+    wire [6:0] id_ex_funct7_out;
+    wire [1:0] id_ex_mem_size_out;
+    wire id_ex_mem_unsigned_out;
+    wire id_ex_alu_a_pc_out;
+    
     // ID/EX pipeline register
     id_ex_reg u_id_ex (
         .clk(clk),
@@ -83,15 +102,15 @@ module core_pipelined (
         .mem_size_in(mem_size),
         .mem_unsigned_in(mem_unsigned),
         .alu_a_pc_in(alu_a_pc),
-        .pc_out(),
+        .pc_out(id_ex_pc_out),
         .rs1_data_out(id_ex_rs1_data_out),
         .rs2_data_out(id_ex_rs2_data_out),
         .imm_out(id_ex_imm_out),
         .rd_out(id_ex_rd_out),
-        .rs1_out(),
-        .rs2_out(),
-        .funct3_out(),
-        .funct7_out(),
+        .rs1_out(id_ex_rs1_out),
+        .rs2_out(id_ex_rs2_out),
+        .funct3_out(id_ex_funct3_out),
+        .funct7_out(id_ex_funct7_out),
         .reg_write_out(id_ex_reg_write_out),
         .mem_read_out(id_ex_mem_read_out),
         .mem_write_out(id_ex_mem_write_out),
@@ -100,8 +119,52 @@ module core_pipelined (
         .alu_src_out(id_ex_alu_src_out),
         .result_src_out(id_ex_result_src_out),
         .alu_op_out(id_ex_alu_op_out),
-        .mem_size_out(),
-        .mem_unsigned_out(),
-        .alu_a_pc_out());
+        .mem_size_out(id_ex_mem_size_out),
+        .mem_unsigned_out(id_ex_mem_unsigned_out),
+        .alu_a_pc_out(id_ex_alu_a_pc_out));
+    
+    // EX stage
+    wire [3:0] ex_alu_ctrl;
+    alu_control u_alu_control (.alu_op(id_ex_alu_op_out),.funct3(id_ex_funct3_out),.funct7(id_ex_funct7_out),.alu_src(id_ex_alu_src_out),.alu_ctrl(ex_alu_ctrl));
+
+    wire [31:0] ex_alu_a = id_ex_alu_a_pc_out ? id_ex_pc_out : id_ex_rs1_data_out;
+    wire [31:0] ex_alu_b = id_ex_alu_src_out ? id_ex_imm_out : id_ex_rs2_data_out;
+
+    wire [31:0] ex_alu_result;
+    wire ex_alu_zero;
+    alu_32 u_alu (.a(ex_alu_a),.b(ex_alu_b),.alu_ctrl(ex_alu_ctrl),.result(ex_alu_result),.zero(ex_alu_zero));
+
+    wire ex_branch_taken;
+    branch_comp u_branch_comp (.rs1_data(id_ex_rs1_data_out),.rs2_data(id_ex_rs2_data_out),.funct3(id_ex_funct3_out),.branch_taken(ex_branch_taken));
+
+    // not wired back to PC yet, control hazard handling is Week 9 (Day 62)
+    wire ex_branch_taken_final = id_ex_branch_out & ex_branch_taken;
+
+    // EX/MEM pipeline register
+    ex_mem_reg u_ex_mem (
+        .clk(clk),
+        .rst(rst),
+        .alu_result_in(ex_alu_result),
+        .rs2_data_in(id_ex_rs2_data_out),
+        .pc_in(id_ex_pc_out),
+        .imm_in(id_ex_imm_out),
+        .rd_in(id_ex_rd_out),
+        .reg_write_in(id_ex_reg_write_out),
+        .mem_read_in(id_ex_mem_read_out),
+        .mem_write_in(id_ex_mem_write_out),
+        .result_src_in(id_ex_result_src_out),
+        .mem_size_in(id_ex_mem_size_out),
+        .mem_unsigned_in(id_ex_mem_unsigned_out),
+        .alu_result_out(ex_mem_alu_result_out),
+        .rs2_data_out(ex_mem_rs2_data_out),
+        .pc_out(ex_mem_pc_out),
+        .imm_out(ex_mem_imm_out),
+        .rd_out(ex_mem_rd_out),
+        .reg_write_out(ex_mem_reg_write_out),
+        .mem_read_out(ex_mem_mem_read_out),
+        .mem_write_out(ex_mem_mem_write_out),
+        .result_src_out(ex_mem_result_src_out),
+        .mem_size_out(ex_mem_mem_size_out),
+        .mem_unsigned_out(ex_mem_mem_unsigned_out));
 
 endmodule

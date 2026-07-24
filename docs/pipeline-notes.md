@@ -130,3 +130,33 @@ converting the single cycle rv32i core into a 5 stage pipeline (if/id/ex/mem/wb)
 - programs/id_stage_test.hex
 - tb/core/core_pipelined_id_tb.v
 - core.v and soc.v still untouched, phase 3 still fully intact and runnable standalone
+
+## DAY 54: EX Stage Pipelined
+
+### what was covered
+- wired the actual execute stage into core_pipelined.v: alu_control, alu_32, branch_comp all feeding off id_ex_reg's outputs, then their results feeding into ex_mem_reg
+- had to go back and actually hook up id_ex_reg's outputs that were left dangling since day 53 (pc_out, funct3_out, funct7_out, mem_size_out, mem_unsigned_out, alu_a_pc_out), EX is what finally needed them
+- branch_comp runs every cycle now and produces a real branch_taken result, but its not wired back to pc yet. keeping that as a plain internal wire (ex_branch_taken_final) for now, the actual feedback path into IF is control hazard handling, thats week 9, not today
+- alu_a mux (pc vs rs1_data) and alu_b mux (imm vs rs2_data) are the same logic seams from core.v's single cycle version, just reading off id_ex_reg's latched outputs instead of live decode signals
+
+### core_pipelined.v additions
+- alu_control.v takes id_ex_alu_op_out/funct3_out/funct7_out/alu_src_out, produces alu_ctrl
+- alu_32.v takes the muxed a/b inputs, produces alu_result + zero (zero unused for now)
+- branch_comp.v runs off id_ex_rs1_data_out/rs2_data_out/funct3_out, produces branch_taken, ANDed with id_ex_branch_out into ex_branch_taken_final, dead ends here on purpose
+- ex_mem_reg.v wired up, carries alu_result/rs2_data/pc/imm/rd plus reg_write/mem_read/mem_write/result_src/mem_size/mem_unsigned forward, dropped branch/jump/alu_src/alu_op since those finished their job inside ex and mem/wb never touch them
+- exposed ex_mem_reg's outputs as new core_pipelined ports so a testbench can actually see them
+
+### testing
+- new testbench core_pipelined_ex_tb.v, new dedicated program (ex_stage_test.hex), add/sub/addi/and/auipc/beq, generated the hex programmatically same as always, never hand encoded
+- preloaded x1=77 x2=13 into regfile same trick as day 53's id tb, non uniform values on purpose so add vs sub vs and all give genuinely different results instead of accidentally matching
+- 6 checks, one per instruction, checking alu_result/rd/reg_write through ex_mem_reg, auipc double checked against pc_in specifically since thats the seam most likely to break (pc has to survive from if all the way through id/ex reg into ex correctly)
+- all 6 matched predicted values, compiled and ran clean
+
+### bugs hit
+- none in logic, except forgetting the signals needed time and time again. 
+
+### what got built
+- rtl/core/core_pipelined.v (EX stage added)
+- programs/ex_stage_test.hex
+- tb/core/core_pipelined_ex_tb.v
+- core.v and soc.v still untouched, phase 3 still fully intact and runnable standalone
