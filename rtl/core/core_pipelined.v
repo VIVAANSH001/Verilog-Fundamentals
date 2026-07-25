@@ -32,7 +32,19 @@ module core_pipelined (
     output wire ex_mem_mem_write_out,
     output wire [1:0] ex_mem_result_src_out,
     output wire [1:0] ex_mem_mem_size_out,
-    output wire ex_mem_mem_unsigned_out);
+    output wire ex_mem_mem_unsigned_out,
+    input wire [31:0] mem_rdata,
+    output wire [31:0] mem_addr,
+    output wire [31:0] mem_wdata,
+    output wire [3:0] mem_byte_en,
+    output wire mem_write,
+    output wire mem_read,
+    output wire [31:0] mem_wb_alu_result_out,
+    output wire [31:0] mem_wb_load_data_out,
+    output wire [4:0] mem_wb_rd_out,
+    output wire mem_wb_reg_write_out,
+    output wire [1:0] mem_wb_result_src_out,
+    output wire [31:0] write_back_data_out);
 
     // IF stage
     reg [31:0] pc_next;
@@ -62,13 +74,12 @@ module core_pipelined (
     wire [31:0] imm;
     immgen u_immgen (.instr(if_id_instr_out),.imm(imm));
 
-    wire reg_write, mem_read, mem_write, branch, jump, alu_src, mem_unsigned, alu_a_pc;
+    wire reg_write, id_mem_read, id_mem_write, branch, jump, alu_src, mem_unsigned, alu_a_pc;
     wire [1:0] result_src, alu_op, mem_size;
-    control_unit u_control (.opcode(opcode),.funct3(funct3),.reg_write(reg_write),.mem_read(mem_read),.mem_write(mem_write),.branch(branch),.jump(jump),.alu_src(alu_src),.result_src(result_src),.alu_op(alu_op),.mem_size(mem_size),.mem_unsigned(mem_unsigned),.alu_a_pc(alu_a_pc));
+    control_unit u_control (.opcode(opcode),.funct3(funct3),.reg_write(reg_write),.mem_read(id_mem_read),.mem_write(id_mem_write),.branch(branch),.jump(jump),.alu_src(alu_src),.result_src(result_src),.alu_op(alu_op),.mem_size(mem_size),.mem_unsigned(mem_unsigned),.alu_a_pc(alu_a_pc));
 
-    // regfile write port unconnected until WB exists
     wire [31:0] rs1_data, rs2_data;
-    regfile u_regfile (.clk(clk),.we(1'b0),.write_addr(5'b0),.write_data(32'b0),.read_addr1(rs1),.read_addr2(rs2),.read_data1(rs1_data),.read_data2(rs2_data));
+    regfile u_regfile (.clk(clk),.we(mem_wb_reg_write_out),.write_addr(mem_wb_rd_out),.write_data(write_back_data),.read_addr1(rs1),.read_addr2(rs2),.read_data1(rs1_data),.read_data2(rs2_data));
 
     wire [31:0] id_ex_pc_out;
     wire [4:0] id_ex_rs1_out, id_ex_rs2_out;
@@ -77,6 +88,8 @@ module core_pipelined (
     wire [1:0] id_ex_mem_size_out;
     wire id_ex_mem_unsigned_out;
     wire id_ex_alu_a_pc_out;
+    wire [31:0] mem_wb_pc_out;
+    wire [31:0] mem_wb_imm_out;
     
     // ID/EX pipeline register
     id_ex_reg u_id_ex (
@@ -92,8 +105,8 @@ module core_pipelined (
         .funct3_in(funct3),
         .funct7_in(funct7),
         .reg_write_in(reg_write),
-        .mem_read_in(mem_read),
-        .mem_write_in(mem_write),
+        .mem_read_in(id_mem_read),
+        .mem_write_in(id_mem_write),
         .branch_in(branch),
         .jump_in(jump),
         .alu_src_in(alu_src),
@@ -166,5 +179,159 @@ module core_pipelined (
         .result_src_out(ex_mem_result_src_out),
         .mem_size_out(ex_mem_mem_size_out),
         .mem_unsigned_out(ex_mem_mem_unsigned_out));
+    
+    // MEM stage
+    // seam 1b: store data positioning (duplicated from core.v, mem_interface.v stays untouched)
+    reg [31:0] mem_wdata_r;
+    always @(*)
+    begin
+        case (ex_mem_mem_size_out)
+            2'b00: // byte
+                case (ex_mem_alu_result_out[1:0])
+                    2'b00: 
+                    begin
+                        mem_wdata_r = {24'b0, ex_mem_rs2_data_out[7:0]};
+                    end
+                    2'b01: 
+                    begin
+                        mem_wdata_r = {16'b0, ex_mem_rs2_data_out[7:0], 8'b0};
+                    end
+                    2'b10: 
+                    begin
+                        mem_wdata_r = {8'b0, ex_mem_rs2_data_out[7:0], 16'b0};
+                    end
+                    2'b11: 
+                    begin
+                        mem_wdata_r = {ex_mem_rs2_data_out[7:0], 24'b0};
+                    end
+                endcase
+            2'b01: // half
+            begin
+                mem_wdata_r = ex_mem_alu_result_out[1] ? {ex_mem_rs2_data_out[15:0], 16'b0} : {16'b0, ex_mem_rs2_data_out[15:0]};
+            end
+            default: // word
+            begin
+                mem_wdata_r = ex_mem_rs2_data_out;
+            end
+        endcase
+    end
+    assign mem_wdata = mem_wdata_r;
+
+    // seam 1: byte_en generator
+    reg [3:0] byte_en_r;
+    always @(*)
+    begin
+        case (ex_mem_mem_size_out)
+            2'b00: // byte
+                case (ex_mem_alu_result_out[1:0])
+                    2'b00: 
+                    begin
+                        byte_en_r = 4'b0001;
+                    end
+                    2'b01: 
+                    begin
+                        byte_en_r = 4'b0010;
+                    end
+                    2'b10: 
+                    begin
+                        byte_en_r = 4'b0100;
+                    end
+                    2'b11: 
+                    begin
+                        byte_en_r = 4'b1000;
+                    end
+                endcase
+            2'b01: // half
+            begin
+                byte_en_r = ex_mem_alu_result_out[1] ? 4'b1100 : 4'b0011;
+            end
+            2'b10: // word
+            begin
+                byte_en_r = 4'b1111;
+            end
+            default:
+            begin
+                byte_en_r = 4'b0000;
+            end
+        endcase
+    end
+    assign mem_byte_en = byte_en_r;
+
+    assign mem_addr = ex_mem_alu_result_out;
+    assign mem_write = ex_mem_mem_write_out;
+    assign mem_read = ex_mem_mem_read_out;
+
+    // seam 2: load sign/zero extend (duplicated from core.v)
+    // mem_rdata is combinational off mem_addr this same cycle, so this reads live,
+    wire [7:0]  load_byte = (ex_mem_alu_result_out[1:0]==2'b00) ? mem_rdata[7:0] : (ex_mem_alu_result_out[1:0]==2'b01) ? mem_rdata[15:8] : (ex_mem_alu_result_out[1:0]==2'b10) ? mem_rdata[23:16] : mem_rdata[31:24];
+    wire [15:0] load_half = ex_mem_alu_result_out[1] ? mem_rdata[31:16] : mem_rdata[15:0];
+
+    reg [31:0] load_data;
+    always @(*)
+    begin
+        case (ex_mem_mem_size_out)
+            2'b00: 
+            begin
+                load_data = ex_mem_mem_unsigned_out ? {24'b0, load_byte} : {{24{load_byte[7]}}, load_byte};
+            end
+            2'b01: 
+            begin
+                load_data = ex_mem_mem_unsigned_out ? {16'b0, load_half} : {{16{load_half[15]}}, load_half};
+            end
+            default: 
+            begin
+                load_data = mem_rdata;
+            end
+        endcase
+    end
+
+    // MEM/WB pipeline register
+    mem_wb_reg u_mem_wb (
+        .clk(clk),
+        .rst(rst),
+        .alu_result_in(ex_mem_alu_result_out),
+        .load_data_in(load_data),
+        .pc_in(ex_mem_pc_out),
+        .imm_in(ex_mem_imm_out),
+        .rd_in(ex_mem_rd_out),
+        .reg_write_in(ex_mem_reg_write_out),
+        .result_src_in(ex_mem_result_src_out),
+        .alu_result_out(mem_wb_alu_result_out),
+        .load_data_out(mem_wb_load_data_out),
+        .pc_out(mem_wb_pc_out),
+        .imm_out(mem_wb_imm_out),
+        .rd_out(mem_wb_rd_out),
+        .reg_write_out(mem_wb_reg_write_out),
+        .result_src_out(mem_wb_result_src_out));
+
+
+    // WB stage: writeback mux
+    reg [31:0] write_back_data;
+    always @(*)
+    begin
+        case (mem_wb_result_src_out)
+            2'b00:
+            begin
+                write_back_data = mem_wb_alu_result_out;
+            end
+            2'b01: 
+            begin
+                write_back_data = mem_wb_load_data_out;
+            end
+            2'b10: 
+            begin
+                write_back_data = mem_wb_pc_out + 32'd4; // pc_plus4 recomputed, not latched separately
+            end
+            2'b11: 
+            begin
+                write_back_data = mem_wb_imm_out;
+            end
+            default: 
+            begin 
+                write_back_data = mem_wb_alu_result_out;
+            end
+        endcase
+    end
+    assign write_back_data_out = write_back_data;
 
 endmodule

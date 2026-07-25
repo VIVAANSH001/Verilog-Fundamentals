@@ -1,0 +1,2889 @@
+// ===== programs/ex_stage_test.hex =====
+002081b3
+40208233
+ff908293
+0020f333
+00001397
+00208463
+// ===== programs/fib.hex =====
+00000093
+00100113
+00000213
+00a00293
+00525c63
+002081b3
+00010093
+00018113
+00120213
+fedff06f
+// ===== programs/id_stage_test.hex =====
+002081b3
+ffb08213
+0000a283
+0020a023
+00208463
+// ===== programs/test1.hex =====
+00500093
+
+// ===== programs/test2.hex =====
+00500093
+00300113
+fff00513
+00100593
+002081b3
+40208233
+0020f2b3
+0020e333
+0020c3b3
+00111433
+002454b3
+40b55733
+00b52633
+00b536b3
+401087b3
+// ===== programs/test3.hex =====
+00500093
+fff00113
+00100193
+00a08513
+ffd08593
+0f017613
+0f006693
+0ff14713
+00112793
+00113813
+00419893
+00415913
+40415993
+0000fa13
+// ===== programs/test4.hex =====
+00002083
+00000103
+00004183
+00100203
+00001283
+00005303
+00201383
+00300403
+00304483
+00402603
+00400503
+00404583
+// ===== programs/test5.hex =====
+fff00093
+0ab00113
+30000193
+00102023
+00200023
+00002503
+00102223
+002002a3
+00402583
+00102423
+00200523
+00802603
+00102623
+002007a3
+00c02683
+00102823
+00301823
+01002703
+00102a23
+00301b23
+01402783
+0ab00213
+00821213
+0cd26213
+01021213
+12326213
+00402c23
+01802803
+// ===== programs/test6.hex =====
+00500093
+00500113
+00208663
+06f00513
+0080006f
+0de00513
+00500093
+00600113
+00208663
+06f00593
+0080006f
+0de00593
+00500093
+00108663
+06f00613
+0080006f
+0de00613
+00500093
+00600113
+00209663
+06f00693
+0080006f
+0de00693
+00500093
+00500113
+00209663
+06f00713
+0080006f
+0de00713
+00500093
+00109663
+06f00793
+0080006f
+0de00793
+fff00093
+00300113
+0020c663
+06f00813
+0080006f
+0de00813
+00300093
+fff00113
+0020c663
+06f00893
+0080006f
+0de00893
+00300093
+fff00113
+0020d663
+06f00913
+0080006f
+0de00913
+fff00093
+00300113
+0020d663
+06f00993
+0080006f
+0de00993
+00200093
+00300113
+0020e663
+06f00a13
+0080006f
+0de00a13
+fff00093
+00300113
+0020e663
+06f00a93
+0080006f
+0de00a93
+fff00093
+00300113
+0020f663
+06f00b13
+0080006f
+0de00b13
+00200093
+00300113
+0020f663
+06f00b93
+0080006f
+0de00b93
+// ===== programs/test7.hex =====
+008002ef
+06f00f13
+0de00f13
+06f00f93
+00c0006f
+0de00f93
+0080006f
+ff9ff06f
+00c000ef
+0de00a93
+00c0006f
+14d00b13
+00008067
+03c00193
+00818067
+06f00c13
+0080006f
+0de00c13
+05100213
+00020067
+00400d6f
+06000de7
+06f00e13
+0080006f
+0de00e13
+0d800313
+f9c30067
+06f00e93
+0080006f
+0de00e93
+// ===== programs/test8.hex =====
+abcde2b7
+fffff337
+000003b7
+00001417
+00002497
+12348493
+// ===== rtl/core/alu.v =====
+// Module: alu.v
+// 32-bit ALU for single-cycle RV32I core, supporting all 10 RV32I
+// ALU operations (ADD, SUB, AND, OR, XOR, SLL, SRL, SRA, SLT, SLTU).
+// Pure combinational
+// Note: builds on an earlier 32-bit alu_32 module from Phase 1,
+// this is the same implementation just one minor refinement (zero
+// flag assign simplified, everything else the same).
+module alu_32 (input [31:0] a,input [31:0] b,input [3:0] alu_ctrl,output reg [31:0] result,output zero);
+
+    //encoding the operations
+    localparam ADD = 4'd0;
+    localparam SUB = 4'd1;
+    localparam AND = 4'd2;
+    localparam OR = 4'd3;
+    localparam XOR = 4'd4;
+    localparam SLL = 4'd5;
+    localparam SRL = 4'd6;
+    localparam SLT = 4'd7;
+    localparam SLTU = 4'd8;
+    localparam SRA = 4'd9;
+
+    assign zero=(result == 32'b0);
+
+    always @ (*)
+    begin
+        case (alu_ctrl)
+            ADD: result = a + b;
+            SUB: result = a - b;
+            AND: result = a & b;
+            OR: result = a | b;
+            XOR: result = a ^ b;
+            SLL: result = a << b[4:0];
+            SRL: result = a >> b[4:0];
+            SLT: result = ($signed(a) < $signed(b)) ? 32'd1 : 32'd0;
+            SLTU: result = (a < b) ? 32'd1 : 32'd0;
+            SRA: result = $signed(a) >>> b[4:0];
+            default: result = 32'd0;
+        endcase
+    end
+endmodule
+
+// ===== rtl/core/alu_control.v =====
+// Module: alu_control.v
+// Converts control_unit.v's coarse alu_op[1:0] + instr_decoder.v's
+// funct3/funct7 into the 4-bit alu_ctrl that alu_32.v expects.
+// Pure combinational.
+//
+// funct7[5] is only trustworthy when it's legitimately encoding
+// something: R-type always, I-type only for the shift ops (SLLI/
+// SRLI/SRAI), since I-type SLLI's funct7 field is spec-fixed but
+// I-type ADDI/ANDI/etc's "funct7" bits are just leftover immediate
+// bits and mean nothing.
+
+module alu_control(input [1:0] alu_op,input [2:0] funct3,input [6:0] funct7,input alu_src,output reg [3:0] alu_ctrl);
+
+    localparam ADD = 4'd0;
+    localparam SUB = 4'd1;
+    localparam AND = 4'd2;
+    localparam OR = 4'd3;
+    localparam XOR = 4'd4;
+    localparam SLL = 4'd5;
+    localparam SRL = 4'd6;
+    localparam SLT = 4'd7;
+    localparam SLTU = 4'd8;
+    localparam SRA = 4'd9;
+
+    always @(*)
+    begin
+        case (alu_op)
+            2'b00: 
+            begin
+                alu_ctrl = ADD;
+            end
+
+            2'b10:
+            begin
+                case (funct3)
+                    3'b000: // ADD/SUB (R-type) or ADDI (I-type)
+                    begin
+                        if (!alu_src && funct7[5])
+                        begin
+                            alu_ctrl = SUB; 
+                        end 
+                        else
+                        begin
+                            alu_ctrl = ADD; 
+                        end
+                    end
+
+                    3'b001:
+                    begin
+                         alu_ctrl = SLL; 
+                    end
+
+                    3'b010: 
+                    begin
+                        alu_ctrl = SLT;
+                    end
+
+                    3'b011: 
+                    begin
+                        alu_ctrl = SLTU;
+                    end
+
+                    3'b100: 
+                    begin 
+                        alu_ctrl = XOR;
+                    end
+
+                    3'b101: 
+                    begin
+                        if (funct7[5])
+                        begin
+                            alu_ctrl = SRA;
+                        end
+                        else
+                        begin
+                            alu_ctrl = SRL;
+                        end
+                    end
+
+                    3'b110: 
+                    begin
+                        alu_ctrl = OR;
+                    end
+
+                    3'b111: 
+                    begin
+                        alu_ctrl = AND;
+                    end
+
+                    default: 
+                    begin
+                        alu_ctrl = ADD;
+                    end
+                endcase
+            end
+
+            default: 
+            begin
+                alu_ctrl = ADD;  // alu_op == 01 (branch) or 11 (unused, LUI bypasses ALU)
+            end
+        endcase
+    end
+
+endmodule
+// ===== rtl/core/branch_comp.v =====
+// branch_comp.v
+// standalone branch comparator: takes rs1/rs2 values + funct3 (branch type
+// encoding), outputs whether the branch is taken. lives outside the ALU on
+// purpose (Day 37 plan calls for dedicated hardware, not reusing the ALU).
+module branch_comp (input [31:0] rs1_data,input [31:0] rs2_data,input [2:0] funct3,output reg branch_taken);
+
+    always @(*) 
+    begin
+        case (funct3)
+            3'b000: 
+            begin
+                branch_taken = (rs1_data == rs2_data); // BEQ
+            end
+            3'b001:
+            begin
+                branch_taken = (rs1_data != rs2_data);// BNE                
+            end
+            3'b100:
+            begin
+                branch_taken = ($signed(rs1_data) <  $signed(rs2_data)); // BLT                
+            end 
+            3'b101:
+            begin
+                branch_taken = ($signed(rs1_data) >= $signed(rs2_data));// BGE                
+            end 
+            3'b110: 
+            begin
+                branch_taken = (rs1_data <  rs2_data); // BLTU
+            end
+            3'b111:
+            begin
+                branch_taken = (rs1_data >= rs2_data); // BGEU
+            end
+            default:
+            begin
+                branch_taken = 1'b0; // not a branch funct3
+            end
+        endcase
+    end
+
+endmodule
+
+// ===== rtl/core/control_unit.v =====
+// control_unit.v
+// main decoder. pure combinational, opcode(+funct3 for mem size) in,
+// control signals out. no RAM/MMIO awareness: mem_read/mem_write/mem_size
+// are generic signals that flow into the memory interface (mem_interface.v),
+// which is the only thing that knows about the address map. this module
+// doesn't know or care what's on the other side of the memory port.
+module control_unit (input [6:0] opcode,input [2:0] funct3,output reg reg_write,output reg mem_read,output reg mem_write,output reg branch,output reg jump,output reg alu_src,output reg [1:0] result_src,output reg [1:0] alu_op,output reg [1:0] mem_size,output reg mem_unsigned,output reg alu_a_pc);
+
+    localparam OP_RTYPE = 7'b0110011;
+    localparam OP_ITYPE = 7'b0010011;
+    localparam OP_LOAD = 7'b0000011;
+    localparam OP_STORE = 7'b0100011;
+    localparam OP_BRANCH = 7'b1100011;
+    localparam OP_JAL = 7'b1101111;
+    localparam OP_JALR = 7'b1100111;
+    localparam OP_LUI = 7'b0110111;
+    localparam OP_AUIPC = 7'b0010111;
+
+    always @(*) 
+    begin
+        // safe defaults, unmapped opcode does nothing
+        reg_write = 1'b0;
+        mem_read = 1'b0;
+        mem_write = 1'b0;
+        branch = 1'b0;
+        jump = 1'b0;
+        alu_src = 1'b0;
+        result_src = 2'b00;
+        alu_op = 2'b00;
+        mem_size = funct3[1:0];  // only meaningful for load/store opcodes
+        mem_unsigned = funct3[2];  // only meaningful for load opcode
+        alu_a_pc = 1'b0;
+
+        case (opcode)
+            OP_RTYPE: 
+            begin
+                reg_write = 1'b1;
+                alu_op = 2'b10; 
+            end
+
+            OP_ITYPE: 
+            begin
+                reg_write = 1'b1;
+                alu_src= 1'b1;
+                alu_op = 2'b10;
+            end
+
+            OP_LOAD: 
+            begin
+                reg_write = 1'b1;
+                mem_read = 1'b1;
+                alu_src = 1'b1;
+                alu_op = 2'b00;
+                result_src = 2'b01;
+            end
+
+            OP_STORE:
+            begin
+                mem_write = 1'b1;
+                alu_src = 1'b1;
+                alu_op = 2'b00; 
+            end
+
+            OP_BRANCH: 
+            begin
+                branch = 1'b1;
+                alu_op = 2'b01;
+            end
+
+            OP_JAL: 
+            begin
+                reg_write = 1'b1;
+                jump = 1'b1;
+                result_src = 2'b10;
+            end
+
+            OP_JALR: 
+            begin
+                reg_write = 1'b1;
+                jump = 1'b1;
+                alu_src = 1'b1;
+                alu_op = 2'b00; 
+                result_src = 2'b10; 
+            end
+
+            OP_LUI: 
+            begin
+                reg_write = 1'b1;
+                result_src = 2'b11; // immediate passthrough, bypasses ALU
+            end
+
+            OP_AUIPC: 
+            begin
+                reg_write = 1'b1;
+                alu_src = 1'b1;
+                alu_op = 2'b00;
+                alu_a_pc = 1'b1;
+            end
+
+            default: 
+            begin
+                // unmapped opcode, everything stays at the safe defaults above
+            end
+        endcase
+    end
+
+endmodule
+
+// ===== rtl/core/core.v =====
+// core.v
+// Day 39: top-level core. Instantiates every module built Days 29-38 and
+// wires them together, plus the glue logic that didn't exist anywhere yet:
+// byte_en gen, load extend, AUIPC A-mux, branch/jump adder, pc_next mux,
+// JALR bit-0 clear. instr_mem and the memory interface/decoder live in
+// soc.v, not here as the core only exposes a clean memory port + fetch port.
+
+module core (input wire clk,input wire rst,input wire [31:0] instruction,input wire [31:0] mem_rdata,output wire [31:0] pc_current,output wire [31:0] mem_addr,output wire [31:0] mem_wdata,output wire [3:0] mem_byte_en,output wire mem_write,output wire mem_read);
+
+    // FETCH
+    reg [31:0] pc_next;
+    pc u_pc (.clk(clk),.rst(rst),.pc_next(pc_next),.pc_current(pc_current));
+
+    // DECODE
+    wire [6:0] opcode;
+    wire [4:0] rd, rs1, rs2;
+    wire [2:0] funct3;
+    wire [6:0] funct7;
+    instr_decoder u_decoder (.instr(instruction),.opcode(opcode),.rd(rd),.rs1(rs1),.rs2(rs2),.funct3(funct3),.funct7(funct7));
+
+    wire [31:0] imm;
+    immgen u_immgen (.instr(instruction),.imm(imm));
+
+    wire reg_write, branch, jump, alu_src, mem_unsigned, alu_a_pc;
+    wire [1:0] result_src, alu_op, mem_size;
+    control_unit u_control(.opcode(opcode),.funct3(funct3),.reg_write(reg_write),.mem_read(mem_read),.mem_write(mem_write),.branch(branch),.jump(jump),.alu_src(alu_src),.result_src(result_src),.alu_op(alu_op),.mem_size(mem_size),.mem_unsigned(mem_unsigned),.alu_a_pc(alu_a_pc));
+
+    // REGISTER FILE
+    wire [31:0] rs1_data, rs2_data;
+    reg  [31:0] write_back_data;
+    regfile u_regfile (.clk(clk),.we(reg_write),.write_addr(rd),.write_data(write_back_data),.read_addr1(rs1),.read_addr2(rs2),.read_data1(rs1_data),.read_data2(rs2_data));
+
+    // ALU
+    wire [3:0] alu_ctrl;
+    alu_control u_alu_control(.alu_op(alu_op),.funct3(funct3),.funct7(funct7),.alu_src(alu_src),.alu_ctrl(alu_ctrl));
+
+    // seam 3: AUIPC needs PC on ALU input A instead of rs1
+    wire [31:0] alu_a = alu_a_pc ? pc_current : rs1_data;
+    wire [31:0] alu_b = alu_src ? imm : rs2_data; // for deciding input b as rs2 or imm
+
+    wire [31:0] alu_result;
+    wire alu_zero;
+    alu_32 u_alu (.a(alu_a),.b(alu_b),.alu_ctrl(alu_ctrl),.result(alu_result),.zero(alu_zero));
+
+    // Branch Compare
+    wire branch_taken;
+    branch_comp u_branch_comp (.rs1_data(rs1_data),.rs2_data(rs2_data),.funct3(funct3),.branch_taken(branch_taken));
+
+    // seam 4: branch/jump target adder (shared for jump and branch as both are just PC+imm,
+    // immgen already picked the right imm format for whichever opcode is active)
+    wire [31:0] pc_plus4 = pc_current + 32'd4;
+    wire [31:0] pc_pc_imm = pc_current + imm;
+
+    // seam 6: JALR reuses the ALU's rs1+imm (alu_src=1, alu_op=00 already
+    // does this for JALR) just forces bit 0 to zero
+    wire [31:0] jalr_target = {alu_result[31:1], 1'b0};
+
+    wire branch_taken_final = branch & branch_taken; // checking if the branch is confirmed
+
+    // seam 5: pc_next priority mux
+    always @(*)
+    begin
+        if (branch_taken_final) // For any branch
+        begin
+            pc_next = pc_pc_imm;
+        end
+        else if (jump && alu_src) // JALR: alu_src=1 only set for JALR among jumps
+        begin
+            pc_next = jalr_target;
+        end
+        else if (jump) // JAL
+        begin
+            pc_next = pc_pc_imm;
+        end
+        else
+        begin
+            pc_next = pc_plus4; // default case of pc=pc+4
+        end
+    end
+
+    // Memory address / data out
+    assign mem_addr = alu_result;   // LOAD/STORE address = rs1+imm, computed by ALU
+    // assign mem_wdata = rs2_data; --> buggy code does not align the word for storing
+    
+    // seam 1b: store data positioning (similar to seam 1's byte_en generator).
+    reg [31:0] mem_wdata_r;
+    always @(*)
+    begin
+        case (mem_size)
+            2'b00: // byte
+                case (alu_result[1:0])
+                    2'b00: 
+                    begin
+                        mem_wdata_r = {24'b0, rs2_data[7:0]};
+                    end
+                    2'b01: 
+                    begin
+                        mem_wdata_r = {16'b0, rs2_data[7:0], 8'b0};
+                    end
+                    2'b10: 
+                    begin
+                        mem_wdata_r = {8'b0, rs2_data[7:0], 16'b0};
+                    end
+                    2'b11: 
+                    begin
+                        mem_wdata_r = {rs2_data[7:0], 24'b0};
+                    end
+                endcase
+            2'b01: // half
+            begin
+                mem_wdata_r = alu_result[1] ? {rs2_data[15:0], 16'b0} : {16'b0, rs2_data[15:0]};
+            end
+            default: // word
+            begin
+                mem_wdata_r = rs2_data;
+            end
+        endcase
+    end
+    assign mem_wdata = mem_wdata_r;
+
+
+    // seam 1: byte_en generator
+    reg [3:0] byte_en_r;
+    always @(*)
+    begin
+        case (mem_size)
+            2'b00: // byte
+                case (alu_result[1:0])
+                    2'b00: 
+                    begin
+                        byte_en_r = 4'b0001;
+                    end
+                    2'b01: 
+                    begin 
+                        byte_en_r = 4'b0010;
+                    end
+                    2'b10: 
+                    begin 
+                        byte_en_r = 4'b0100;
+                    end
+                    2'b11: 
+                    begin 
+                        byte_en_r = 4'b1000;
+                    end
+                endcase
+            2'b01: // half
+            begin 
+                byte_en_r = alu_result[1] ? 4'b1100 : 4'b0011;
+            end
+            2'b10: // word
+            begin 
+                byte_en_r = 4'b1111;
+            end
+            default:
+            begin
+                byte_en_r = 4'b0000;
+            end
+        endcase
+    end
+    assign mem_byte_en = byte_en_r;
+
+    // seam 2: load sign/zero extend (two steps: lane-select first, then extend)
+    wire [7:0]  load_byte = (alu_result[1:0]==2'b00) ? mem_rdata[7:0] : (alu_result[1:0]==2'b01) ? mem_rdata[15:8] : (alu_result[1:0]==2'b10) ? mem_rdata[23:16]: mem_rdata[31:24];
+    wire [15:0] load_half = alu_result[1] ? mem_rdata[31:16] : mem_rdata[15:0];
+    
+    reg [31:0] load_data;
+    always @(*)
+    begin
+        case (mem_size)
+            2'b00: 
+            begin
+                load_data = mem_unsigned ? {24'b0, load_byte} : {{24{load_byte[7]}}, load_byte};
+            end
+            2'b01: 
+            begin
+                load_data = mem_unsigned ? {16'b0, load_half} : {{16{load_half[15]}}, load_half};
+            end
+            2'b10: 
+            begin
+                load_data = mem_rdata;
+            end
+            default: 
+            begin
+                load_data = mem_rdata;
+            end
+        endcase
+    end
+
+    // Writeback mux
+    always @(*)
+    begin
+        case (result_src)
+            2'b00:
+            begin
+                write_back_data = alu_result;
+            end
+            2'b01: 
+            begin
+                write_back_data = load_data;
+            end
+            2'b10:
+            begin
+                write_back_data = pc_plus4;
+            end
+            2'b11:
+            begin
+                write_back_data = imm;
+            end
+            default:
+            begin
+                write_back_data = alu_result;
+            end
+        endcase
+    end
+
+endmodule
+// ===== rtl/core/core_pipelined.v =====
+// core_pipelined.v
+// Day 52: first structural piece of the pipelined core. IF stage only,
+// pc.v feeding if_id_reg.v. core.v (Phase 3, single-cycle) is untouched
+// and stays runnable as the reference to differentiate against once hazards show
+// up in week 9.
+module core_pipelined (
+    input wire clk,
+    input wire rst,
+    input wire [31:0] instruction,
+    output wire [31:0] pc_current,
+    output wire [31:0] if_id_instr_out,
+    output wire [31:0] if_id_pc_out,
+    output wire [4:0] id_ex_rd_out,
+    output wire [31:0] id_ex_rs1_data_out,
+    output wire [31:0] id_ex_rs2_data_out,
+    output wire [31:0] id_ex_imm_out,
+    output wire id_ex_reg_write_out,
+    output wire id_ex_mem_read_out,
+    output wire id_ex_mem_write_out,
+    output wire [1:0] id_ex_result_src_out,
+    output wire id_ex_branch_out,
+    output wire id_ex_jump_out,
+    output wire id_ex_alu_src_out,
+    output wire [1:0] id_ex_alu_op_out,
+    output wire [31:0] ex_mem_alu_result_out,
+    output wire [31:0] ex_mem_rs2_data_out,
+    output wire [31:0] ex_mem_pc_out,
+    output wire [31:0] ex_mem_imm_out,
+    output wire [4:0] ex_mem_rd_out,
+    output wire ex_mem_reg_write_out,
+    output wire ex_mem_mem_read_out,
+    output wire ex_mem_mem_write_out,
+    output wire [1:0] ex_mem_result_src_out,
+    output wire [1:0] ex_mem_mem_size_out,
+    output wire ex_mem_mem_unsigned_out);
+
+    // IF stage
+    reg [31:0] pc_next;
+    pc u_pc (.clk(clk), .rst(rst), .pc_next(pc_next), .pc_current(pc_current));
+
+    always @(*)
+    begin
+        pc_next = pc_current + 32'd4;
+    end
+
+    // IF/ID pipeline register
+    if_id_reg u_if_id (
+        .clk(clk),
+        .rst(rst),
+        .instr_in(instruction),
+        .pc_in(pc_current),
+        .instr_out(if_id_instr_out),
+        .pc_out(if_id_pc_out));
+    
+    // ID stage
+    wire [6:0] opcode;
+    wire [4:0] rd,rs1,rs2;
+    wire [2:0] funct3;
+    wire [6:0] funct7;
+    instr_decoder u_decoder (.instr(if_id_instr_out),.opcode(opcode),.rd(rd),.rs1(rs1),.rs2(rs2),.funct3(funct3),.funct7(funct7));
+
+    wire [31:0] imm;
+    immgen u_immgen (.instr(if_id_instr_out),.imm(imm));
+
+    wire reg_write, mem_read, mem_write, branch, jump, alu_src, mem_unsigned, alu_a_pc;
+    wire [1:0] result_src, alu_op, mem_size;
+    control_unit u_control (.opcode(opcode),.funct3(funct3),.reg_write(reg_write),.mem_read(mem_read),.mem_write(mem_write),.branch(branch),.jump(jump),.alu_src(alu_src),.result_src(result_src),.alu_op(alu_op),.mem_size(mem_size),.mem_unsigned(mem_unsigned),.alu_a_pc(alu_a_pc));
+
+    // regfile write port unconnected until WB exists
+    wire [31:0] rs1_data, rs2_data;
+    regfile u_regfile (.clk(clk),.we(1'b0),.write_addr(5'b0),.write_data(32'b0),.read_addr1(rs1),.read_addr2(rs2),.read_data1(rs1_data),.read_data2(rs2_data));
+
+    wire [31:0] id_ex_pc_out;
+    wire [4:0] id_ex_rs1_out, id_ex_rs2_out;
+    wire [2:0] id_ex_funct3_out;
+    wire [6:0] id_ex_funct7_out;
+    wire [1:0] id_ex_mem_size_out;
+    wire id_ex_mem_unsigned_out;
+    wire id_ex_alu_a_pc_out;
+    
+    // ID/EX pipeline register
+    id_ex_reg u_id_ex (
+        .clk(clk),
+        .rst(rst),
+        .pc_in(if_id_pc_out),
+        .rs1_data_in(rs1_data),
+        .rs2_data_in(rs2_data),
+        .imm_in(imm),
+        .rd_in(rd),
+        .rs1_in(rs1),
+        .rs2_in(rs2),
+        .funct3_in(funct3),
+        .funct7_in(funct7),
+        .reg_write_in(reg_write),
+        .mem_read_in(mem_read),
+        .mem_write_in(mem_write),
+        .branch_in(branch),
+        .jump_in(jump),
+        .alu_src_in(alu_src),
+        .result_src_in(result_src),
+        .alu_op_in(alu_op),
+        .mem_size_in(mem_size),
+        .mem_unsigned_in(mem_unsigned),
+        .alu_a_pc_in(alu_a_pc),
+        .pc_out(id_ex_pc_out),
+        .rs1_data_out(id_ex_rs1_data_out),
+        .rs2_data_out(id_ex_rs2_data_out),
+        .imm_out(id_ex_imm_out),
+        .rd_out(id_ex_rd_out),
+        .rs1_out(id_ex_rs1_out),
+        .rs2_out(id_ex_rs2_out),
+        .funct3_out(id_ex_funct3_out),
+        .funct7_out(id_ex_funct7_out),
+        .reg_write_out(id_ex_reg_write_out),
+        .mem_read_out(id_ex_mem_read_out),
+        .mem_write_out(id_ex_mem_write_out),
+        .branch_out(id_ex_branch_out),
+        .jump_out(id_ex_jump_out),
+        .alu_src_out(id_ex_alu_src_out),
+        .result_src_out(id_ex_result_src_out),
+        .alu_op_out(id_ex_alu_op_out),
+        .mem_size_out(id_ex_mem_size_out),
+        .mem_unsigned_out(id_ex_mem_unsigned_out),
+        .alu_a_pc_out(id_ex_alu_a_pc_out));
+    
+    // EX stage
+    wire [3:0] ex_alu_ctrl;
+    alu_control u_alu_control (.alu_op(id_ex_alu_op_out),.funct3(id_ex_funct3_out),.funct7(id_ex_funct7_out),.alu_src(id_ex_alu_src_out),.alu_ctrl(ex_alu_ctrl));
+
+    wire [31:0] ex_alu_a = id_ex_alu_a_pc_out ? id_ex_pc_out : id_ex_rs1_data_out;
+    wire [31:0] ex_alu_b = id_ex_alu_src_out ? id_ex_imm_out : id_ex_rs2_data_out;
+
+    wire [31:0] ex_alu_result;
+    wire ex_alu_zero;
+    alu_32 u_alu (.a(ex_alu_a),.b(ex_alu_b),.alu_ctrl(ex_alu_ctrl),.result(ex_alu_result),.zero(ex_alu_zero));
+
+    wire ex_branch_taken;
+    branch_comp u_branch_comp (.rs1_data(id_ex_rs1_data_out),.rs2_data(id_ex_rs2_data_out),.funct3(id_ex_funct3_out),.branch_taken(ex_branch_taken));
+
+    // not wired back to PC yet, control hazard handling is Week 9 (Day 62)
+    wire ex_branch_taken_final = id_ex_branch_out & ex_branch_taken;
+
+    // EX/MEM pipeline register
+    ex_mem_reg u_ex_mem (
+        .clk(clk),
+        .rst(rst),
+        .alu_result_in(ex_alu_result),
+        .rs2_data_in(id_ex_rs2_data_out),
+        .pc_in(id_ex_pc_out),
+        .imm_in(id_ex_imm_out),
+        .rd_in(id_ex_rd_out),
+        .reg_write_in(id_ex_reg_write_out),
+        .mem_read_in(id_ex_mem_read_out),
+        .mem_write_in(id_ex_mem_write_out),
+        .result_src_in(id_ex_result_src_out),
+        .mem_size_in(id_ex_mem_size_out),
+        .mem_unsigned_in(id_ex_mem_unsigned_out),
+        .alu_result_out(ex_mem_alu_result_out),
+        .rs2_data_out(ex_mem_rs2_data_out),
+        .pc_out(ex_mem_pc_out),
+        .imm_out(ex_mem_imm_out),
+        .rd_out(ex_mem_rd_out),
+        .reg_write_out(ex_mem_reg_write_out),
+        .mem_read_out(ex_mem_mem_read_out),
+        .mem_write_out(ex_mem_mem_write_out),
+        .result_src_out(ex_mem_result_src_out),
+        .mem_size_out(ex_mem_mem_size_out),
+        .mem_unsigned_out(ex_mem_mem_unsigned_out));
+
+endmodule
+// ===== rtl/core/data_mem.v =====
+// Module: data_mem.v
+// Byte-addressed data memory (4KB) for single-cycle RV32I core.
+// Supports byte, half-word, and word reads/writes via a memory interface.
+// Writes are clocked and masked per-byte via byte_en so sb/sh/sw
+// only touch the intended byte lanes within a word group.
+// Reads are combinational and always return the full aligned word
+
+module data_mem (input wire clk,input wire [11:0] addr,input wire [31:0] wdata,input wire [3:0] byte_en,input wire mem_write,input wire mem_read,output wire [31:0] rdata);
+
+    // 4096 bytes can be stored here so thats 4KB
+    reg [7:0] mem [0:4095];
+
+    // word-aligned base for the current address
+    wire [11:0] base = {addr[11:2], 2'b00};
+    
+    // sync write
+    always @(posedge clk)
+    begin
+        if (mem_write) 
+        begin
+            if (byte_en[0])
+            begin
+                mem[base] <= wdata[7:0];
+            end
+            if (byte_en[1])
+            begin
+                mem[base+1] <= wdata[15:8];                
+            end
+            if (byte_en[2])
+            begin
+                mem[base+2] <= wdata[23:16];                
+            end
+            if (byte_en[3]) 
+            begin
+                mem[base+3] <= wdata[31:24];
+            end
+        end
+    end
+
+    //async read just like the regfile
+    assign rdata = mem_read ? {mem[base+3], mem[base+2], mem[base+1], mem[base]} : 32'b0;
+
+endmodule
+
+// ===== rtl/core/ex_mem_reg.v =====
+// Module: ex_mem_reg.v
+// Pipeline register between EX and MEM stages.
+// Carries the ALU result, rs2_data, plus pc/imm/rd/control bits that WB still needs downstream.
+module ex_mem_reg (
+    input wire clk,
+    input wire rst,
+    input wire [31:0] alu_result_in,
+    input wire [31:0] rs2_data_in,
+    input wire [31:0] pc_in,
+    input wire [31:0] imm_in,
+    input wire [4:0] rd_in,
+    input wire reg_write_in,
+    input wire mem_read_in,
+    input wire mem_write_in,
+    input wire [1:0] result_src_in,
+    input wire [1:0] mem_size_in,
+    input wire mem_unsigned_in,
+    output reg [31:0] alu_result_out,
+    output reg [31:0] rs2_data_out,
+    output reg [31:0] pc_out,
+    output reg [31:0] imm_out,
+    output reg [4:0] rd_out,
+    output reg reg_write_out,
+    output reg mem_read_out,
+    output reg mem_write_out,
+    output reg [1:0] result_src_out,
+    output reg [1:0] mem_size_out,
+    output reg mem_unsigned_out
+);
+
+    always @(posedge clk) 
+    begin
+        if (rst) 
+        begin
+            alu_result_out <= 32'b0;
+            rs2_data_out <= 32'b0;
+            pc_out <= 32'b0;
+            imm_out <= 32'b0;
+            rd_out <= 5'b0;
+            reg_write_out <= 1'b0;
+            mem_read_out <= 1'b0;
+            mem_write_out <= 1'b0;
+            result_src_out <= 2'b0;
+            mem_size_out <= 2'b0;
+            mem_unsigned_out <= 1'b0;
+        end 
+        else 
+        begin
+            alu_result_out <= alu_result_in;
+            rs2_data_out <= rs2_data_in;
+            pc_out <= pc_in;
+            imm_out <= imm_in;
+            rd_out <= rd_in;
+            reg_write_out <= reg_write_in;
+            mem_read_out <= mem_read_in;
+            mem_write_out <= mem_write_in;
+            result_src_out <= result_src_in;
+            mem_size_out <= mem_size_in;
+            mem_unsigned_out <= mem_unsigned_in;
+        end
+    end
+
+endmodule
+// ===== rtl/core/id_ex_reg.v =====
+// Module: id_ex_reg.v
+// Pipeline register between ID and EX stages.
+// Carries decoded operands, immediate, register addresses, every control signal control_unit.v produces,
+// since downstream stages (EX/MEM/WB) each still need a subset of them.
+module id_ex_reg (
+    input wire clk,
+    input wire rst,
+    input wire [31:0] pc_in,
+    input wire [31:0] rs1_data_in,
+    input wire [31:0] rs2_data_in,
+    input wire [31:0] imm_in,
+    input wire [4:0] rd_in,
+    input wire [4:0] rs1_in,
+    input wire [4:0] rs2_in,
+    input wire [2:0] funct3_in,
+    input wire [6:0] funct7_in,
+    input wire reg_write_in,
+    input wire mem_read_in,
+    input wire mem_write_in,
+    input wire branch_in,
+    input wire jump_in,
+    input wire alu_src_in,
+    input wire [1:0] result_src_in,
+    input wire [1:0] alu_op_in,
+    input wire [1:0] mem_size_in,
+    input wire mem_unsigned_in,
+    input wire alu_a_pc_in,
+    output reg [31:0] pc_out,
+    output reg [31:0] rs1_data_out,
+    output reg [31:0] rs2_data_out,
+    output reg [31:0] imm_out,
+    output reg [4:0] rd_out,
+    output reg [4:0] rs1_out,
+    output reg [4:0] rs2_out,
+    output reg [2:0] funct3_out,
+    output reg [6:0] funct7_out,
+    output reg reg_write_out,
+    output reg mem_read_out,
+    output reg mem_write_out,
+    output reg branch_out,
+    output reg jump_out,
+    output reg alu_src_out,
+    output reg [1:0] result_src_out,
+    output reg [1:0] alu_op_out,
+    output reg [1:0] mem_size_out,
+    output reg mem_unsigned_out,
+    output reg alu_a_pc_out);
+
+    always @(posedge clk) 
+    begin
+        if (rst) 
+        begin
+            pc_out <= 32'b0;
+            rs1_data_out <= 32'b0;
+            rs2_data_out <= 32'b0;
+            imm_out <= 32'b0;
+            rd_out <= 5'b0;
+            rs1_out <= 5'b0;
+            rs2_out <= 5'b0;
+            funct3_out <= 3'b0;
+            funct7_out <= 7'b0;
+            reg_write_out <= 1'b0;
+            mem_read_out <= 1'b0;
+            mem_write_out <= 1'b0;
+            branch_out <= 1'b0;
+            jump_out <= 1'b0;
+            alu_src_out <= 1'b0;
+            result_src_out <= 2'b0;
+            alu_op_out <= 2'b0;
+            mem_size_out <= 2'b0;
+            mem_unsigned_out <= 1'b0;
+            alu_a_pc_out <= 1'b0;
+        end 
+        else 
+        begin
+            pc_out <= pc_in;
+            rs1_data_out <= rs1_data_in;
+            rs2_data_out <= rs2_data_in;
+            imm_out <= imm_in;
+            rd_out <= rd_in;
+            rs1_out <= rs1_in;
+            rs2_out <= rs2_in;
+            funct3_out <= funct3_in;
+            funct7_out <= funct7_in;
+            reg_write_out <= reg_write_in;
+            mem_read_out <= mem_read_in;
+            mem_write_out <= mem_write_in;
+            branch_out <= branch_in;
+            jump_out <= jump_in;
+            alu_src_out <= alu_src_in;
+            result_src_out <= result_src_in;
+            alu_op_out <= alu_op_in;
+            mem_size_out <= mem_size_in;
+            mem_unsigned_out <= mem_unsigned_in;
+            alu_a_pc_out <= alu_a_pc_in;
+        end
+    end
+
+endmodule
+// ===== rtl/core/if_id_reg.v =====
+// Module: if_id_reg.v
+// Pipeline register between IF and ID stages.
+// Latches the fetched instruction and its PC so ID can decode
+// while IF moves on to the next fetch.
+module if_id_reg (
+    input wire clk,
+    input wire rst,
+    input wire [31:0] instr_in,
+    input wire [31:0] pc_in,
+    output reg [31:0] instr_out,
+    output reg [31:0] pc_out);
+
+    always @(posedge clk) 
+    begin
+        if (rst) 
+        begin
+            instr_out <= 32'b0;
+            pc_out <= 32'b0;
+        end 
+        else 
+        begin
+            instr_out <= instr_in;
+            pc_out <= pc_in;
+        end
+    end
+
+endmodule
+// ===== rtl/core/immgen.v =====
+// Module: immgen.v
+// Immediate generator for single-cycle RV32I core.
+// Pure combinational immediate extraction and sign extension.
+// Reads the raw instruction independently of the decoder 
+// and determines format via opcode, then slices and
+// reassembles the scrambled immediate bit fields especially for B and J types
+// or contiguous fields for I , S , U types into one sign-extended 32-bit value.
+
+module immgen (input [31:0] instr,output reg [31:0] imm);
+
+    // imm gen reads the raw instruction directly and thus makes use of the opcode bits[6:0]
+    localparam OP_IMM = 7'b0010011;// I type
+    localparam LOAD = 7'b0000011;// I type
+    localparam JALR = 7'b1100111; // I type
+    localparam STORE = 7'b0100011; // S type
+    localparam BRANCH = 7'b1100011; // B type
+    localparam LUI = 7'b0110111; // U type
+    localparam AUIPC = 7'b0010111; // U type
+    localparam JAL = 7'b1101111; // J type
+
+    always @(*) 
+    begin
+        case (instr[6:0])
+
+            // I type: imm[11:0] = instr[31:20]
+            OP_IMM, LOAD, JALR: 
+            begin
+                imm = {{20{instr[31]}}, instr[31:20]};
+            end
+
+            // S type: split across two fields, imm[11:5] and imm[4:0]
+            STORE: 
+            begin
+                imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};
+            end
+
+            // B type: scrambled also imm[0] is always 0 (branch targets are 2 byte aligned)
+            // bit order when reassembling: imm[12] imm[11] imm[10:5] imm[4:1] 0
+            BRANCH:
+            begin
+                imm = {{19{instr[31]}}, instr[31], instr[7], instr[30:25], instr[11:8], 1'b0};
+            end
+
+            // U type: imm sits in the top 20 bits, bottom 12 are 0
+            LUI, AUIPC: 
+            begin
+                imm = {instr[31:12], 12'b0};
+            end
+
+            // J type: scrambled AND imm[0] is always 0 (jump targets are 2 byte aligned)
+            // bit order when reassembling: imm[20] imm[19:12] imm[11] imm[10:1] 0
+            JAL: 
+            begin
+                imm = {{11{instr[31]}}, instr[31], instr[19:12], instr[20], instr[30:21], 1'b0};
+            end
+
+            // R type and anything else: no immediate thus ignored
+            default: 
+            begin
+                imm = 32'b0;
+            end
+
+        endcase
+    end
+
+endmodule
+
+// ===== rtl/core/instr_decoder.v =====
+// Module: instr_decoder.v
+// Fixed-slice instruction decoder for single-cycle RV32I core.
+// Pure combinational field extraction as there is no logic and format
+// awareness, no decisions about what the instruction means.
+// Always slices all 6 fields unconditionally; each format just
+// uses the subset that's relevant to it.
+module instr_decoder(input [31:0] instr,output [6:0] opcode,output [4:0] rd,output [4:0] rs1,output [4:0] rs2,output [2:0] funct3,output [6:0] funct7);
+
+    assign opcode = instr[6:0];
+    assign rd = instr[11:7];
+    assign rs1 = instr[19:15];
+    assign rs2 = instr[24:20];
+    assign funct3 = instr[14:12];
+    assign funct7 = instr[31:25];
+
+endmodule
+
+// ===== rtl/core/instr_mem.v =====
+// Module: instr_mem.v
+// Read-only instruction memory for single-cycle RV32I core.
+// Loaded at time 0 from a hex file via $readmemh.
+// Word-addressed internally. byte address from PC is converted
+// to a word index by dropping the bottom 2 bits.
+
+module instr_mem (input [31:0] pc_current,output [31:0] instruction);
+
+    // 1024x32-bit word memory thus a 4KB instruction space
+    reg [31:0] mem [0:1023];
+
+    initial begin
+        $readmemh("programs/ex_stage_test.hex", mem);
+    end
+
+    // gets the instruction by slicing the last 2 bits.
+    assign instruction = mem[pc_current[11:2]];
+endmodule
+
+// ===== rtl/core/mem_interface.v =====
+// Module: mem_interface.v
+// Memory interface or address decoder for single-cycle RV32I core.
+// Sits between the core's memory port and the data RAM, routing
+// accesses based on address range instead of letting the core touch
+// RAM directly. This is the seam peripherals plug into later.
+
+module mem_interface (input wire clk,input wire [31:0] addr,input wire [31:0] wdata,input wire [3:0] byte_en,input wire mem_write,input wire mem_read,output wire [31:0] rdata);
+
+    wire is_ram = (addr < 32'h0000_1000);
+    wire is_mmio = (addr >= 32'h1000_0000); //peripherals decode here later
+    wire [31:0] ram_rdata;
+
+    data_mem ram (.clk(clk),.addr(addr[11:0]),.wdata(wdata),.byte_en(byte_en),.mem_write(mem_write && is_ram),.mem_read(mem_read && is_ram),.rdata(ram_rdata));
+
+    // route read data based on decoded region. MMIO/unmapped stub to 0
+    assign rdata = is_ram ? ram_rdata : 32'b0;
+
+endmodule
+
+// ===== rtl/core/mem_wb_reg.v =====
+// Module: mem_wb_reg.v
+// Pipeline register between MEM and WB stages.
+// Carries alu_result, load_data, pc, imm, rd, reg_write, and result_src.
+module mem_wb_reg (
+    input wire clk,
+    input wire rst,
+    input wire [31:0] alu_result_in,
+    input wire [31:0] load_data_in,
+    input wire [31:0] pc_in,
+    input wire [31:0] imm_in,
+    input wire [4:0] rd_in,
+    input wire reg_write_in,
+    input wire [1:0] result_src_in,
+    output reg [31:0] alu_result_out,
+    output reg [31:0] load_data_out,
+    output reg [31:0] pc_out,
+    output reg [31:0] imm_out,
+    output reg [4:0] rd_out,
+    output reg reg_write_out,
+    output reg [1:0] result_src_out);
+
+    always @(posedge clk) 
+    begin
+        if (rst) 
+        begin
+            alu_result_out <= 32'b0;
+            load_data_out <= 32'b0;
+            pc_out <= 32'b0;
+            imm_out <= 32'b0;
+            rd_out <= 5'b0;
+            reg_write_out <= 1'b0;
+            result_src_out <= 2'b0;
+        end 
+        else 
+        begin
+            alu_result_out <= alu_result_in;
+            load_data_out <= load_data_in;
+            pc_out <= pc_in;
+            imm_out <= imm_in;
+            rd_out <= rd_in;
+            reg_write_out <= reg_write_in;
+            result_src_out <= result_src_in;
+        end
+    end
+
+endmodule
+// ===== rtl/core/pc.v =====
+// Module: pc (Program Counter)
+// Purpose:
+//   Holds the current instruction address. Pure register, thus does
+//   NOT decide whether the next PC is +4, a branch target, or a
+//   jump target. That mux logic lives outside this module
+//   (built during top-level wiring), per the strict datapath/
+//   control separation rule for this project.
+//
+// Ports:
+//   clk: system clock
+//   rst: synchronous, active-high reset
+//   pc_next: next PC value, driven externally by a mux
+//   pc_current: current PC value, output to instruction memory
+//
+// Design notes:
+// -->Synchronous reset (checked inside always @(posedge clk),
+//    not in the sensitivity list), chosen because the
+//    testbench/simulation clock is always running; no power-on
+//    clock-stability problem to solve here.
+// -->Resets to 32'b0 (first instruction lives at address 0).
+
+
+module pc (input wire clk,input wire rst,input wire [31:0] pc_next,output reg [31:0] pc_current);
+
+    always @(posedge clk) 
+    begin
+        if (rst)
+        begin
+            pc_current <= 32'b0;
+        end
+        else
+        begin
+            pc_current <= pc_next;
+        end
+    end
+
+endmodule
+
+// ===== rtl/core/regfile.v =====
+// Module: regfile.v
+// 32x32-bit register file for single-cycle RV32I core.
+// 2 async read ports, 1 sync write port, x0 hardwired to zero
+module regfile (input clk,input we,input [4:0] write_addr,input [31:0] write_data,input [4:0] read_addr1,input [4:0] read_addr2,output [31:0] read_data1,output [31:0] read_data2);
+
+    reg [31:0] registers [0:31];
+    
+    // sync write always
+    always @(posedge clk) 
+    begin
+        if (we == 1'b1)
+        begin
+            registers[write_addr] <= write_data;
+        end
+    end
+    // read is async to allow single cycle
+    assign read_data1 = (read_addr1 == 5'b00000) ? 32'b0 : registers[read_addr1];
+    assign read_data2 = (read_addr2 == 5'b00000) ? 32'b0 : registers[read_addr2];
+
+endmodule
+
+// ===== rtl/soc/soc.v =====
+// soc.v
+// Top-level system: core + instruction memory + memory interface (RAM/MMIO
+// decoder) + data RAM.
+
+module soc (input wire clk,input wire rst); // top level so doesnt need any other inputs/outputs
+
+    wire [31:0] pc_current, instruction;
+    wire [31:0] mem_addr, mem_wdata, mem_rdata;
+    wire [3:0] mem_byte_en;
+    wire mem_write, mem_read;
+
+    core u_core (.clk(clk),.rst(rst),.instruction(instruction),.mem_rdata(mem_rdata),.pc_current(pc_current),.mem_addr(mem_addr),.mem_wdata(mem_wdata),.mem_byte_en(mem_byte_en),.mem_write(mem_write),.mem_read(mem_read));
+
+    instr_mem u_instr_mem (.pc_current(pc_current),.instruction(instruction));
+
+    mem_interface u_mem_interface (.clk(clk),.addr(mem_addr),.wdata(mem_wdata),.byte_en(mem_byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(mem_rdata));
+
+endmodule
+// ===== tb/core/alu_control_tb.v =====
+module alu_control_tb;
+
+    reg [1:0] alu_op;
+    reg [2:0] funct3;
+    reg [6:0] funct7;
+    reg alu_src;
+    wire [3:0] alu_ctrl;
+
+    alu_control uut (.alu_op(alu_op),.funct3(funct3),.funct7(funct7),.alu_src(alu_src),.alu_ctrl(alu_ctrl));
+
+    initial begin
+        $dumpfile("alu_control_tb.vcd");
+        $dumpvars(0,alu_control_tb);
+
+        // alu_op = 00, address calc, funct3/funct7 should be ignored
+        alu_op = 2'b00; funct3 = 3'b111; funct7 = 7'b1111111; alu_src = 1'b1;
+        #10 $display("LW addr calc: alu_ctrl=%d (expect 0 ADD)",alu_ctrl);
+
+        // R-type ADD: funct3=000, funct7=0000000, alu_src=0
+        alu_op = 2'b10; funct3 = 3'b000; funct7 = 7'b0000000; alu_src = 1'b0;
+        #10 $display("ADD: alu_ctrl=%d (expect 0 ADD)",alu_ctrl);
+
+        // R-type SUB: funct3=000, funct7[5]=1, alu_src=0
+        alu_op = 2'b10; funct3 = 3'b000; funct7 = 7'b0100000; alu_src = 1'b0;
+        #10 $display("SUB: alu_ctrl=%d (expect 1 SUB)",alu_ctrl);
+
+        // ADDI with garbage funct7 (imm = -1, all 1s incl bit 5): alu_src=1
+        // this is the exact bug case, must not become SUB
+        alu_op = 2'b10; funct3 = 3'b000; funct7 = 7'b1111111; alu_src = 1'b1;
+        #10 $display("ADDI (imm=-1, fake funct7): alu_ctrl=%d (expect 0 ADD)",alu_ctrl);
+
+        // ADDI with funct7=0 (imm=0, no ambiguity anyway): alu_src=1
+        alu_op = 2'b10; funct3 = 3'b000; funct7 = 7'b0000000; alu_src = 1'b1;
+        #10 $display("ADDI (imm=0): alu_ctrl=%d (expect 0 ADD)",alu_ctrl);
+
+        // R-type SRL: funct3=101, funct7=0000000, alu_src=0
+        alu_op = 2'b10; funct3 = 3'b101; funct7 = 7'b0000000; alu_src = 1'b0;
+        #10 $display("SRL: alu_ctrl=%d (expect 6 SRL)",alu_ctrl);
+
+        // R-type SRA: funct3=101, funct7[5]=1, alu_src=0
+        alu_op = 2'b10; funct3 = 3'b101; funct7 = 7'b0100000; alu_src = 1'b0;
+        #10 $display("SRA: alu_ctrl=%d (expect 9 SRA)",alu_ctrl);
+
+        // I-type SRLI: funct3=101, funct7=0000000 (real, spec-fixed), alu_src=1
+        alu_op = 2'b10; funct3 = 3'b101; funct7 = 7'b0000000; alu_src = 1'b1;
+        #10 $display("SRLI: alu_ctrl=%d (expect 6 SRL)",alu_ctrl);
+
+        // I-type SRAI: funct3=101, funct7[5]=1 (real, spec-fixed), alu_src=1
+        alu_op = 2'b10; funct3 = 3'b101; funct7 = 7'b0100000; alu_src = 1'b1;
+        #10 $display("SRAI: alu_ctrl=%d (expect 9 SRA)",alu_ctrl);
+
+        // remaining no ambiguity ops, spot check
+        alu_op = 2'b10; funct3 = 3'b001; funct7 = 7'b0000000; alu_src = 1'b0;
+        #10 $display("SLL: alu_ctrl=%d (expect 5 SLL)",alu_ctrl);
+
+        alu_op = 2'b10; funct3 = 3'b111; funct7 = 7'b0000000; alu_src = 1'b1;
+        #10 $display("ANDI: alu_ctrl=%d (expect 2 AND)",alu_ctrl);
+
+        // alu_op = 01, branch, result shouldn't matter, just don't crash
+        alu_op = 2'b01; funct3 = 3'b000; funct7 = 7'b0000000; alu_src = 1'b0;
+        #10 $display("BRANCH (unused): alu_ctrl=%d (don't care)", alu_ctrl);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/core/alu_tb.v =====
+// reusing tb made in phase 1
+`timescale 1ns/1ps
+module alu_32_tb;
+
+reg [31:0] a;
+reg [31:0] b;
+reg [3:0] alu_ctrl;
+wire [31:0] result;
+wire zero;
+
+alu_32 uut(.a(a) , .b(b) , .alu_ctrl(alu_ctrl) , .result(result) , .zero(zero));
+
+initial begin
+    $dumpfile("alu_32.vcd");
+    $dumpvars(0,alu_32_tb);
+
+    //TESTING ADD
+
+    a=32'd7; b=32'd2; alu_ctrl=4'd0;
+    #10;
+    $display("ADD: a=%d b=%d result=%d (expect 9)",a,b,result);
+
+    //TESTING SUB AND ZERO FLAG
+
+    a=32'd7; b=32'd7; alu_ctrl=4'd1;
+    #10;
+    $display("SUB: a=%d b=%d result=%d zero flag=%b (expect 0 , with zero flag being high)",a,b,result,zero);
+
+    //TESTING AND OR XOR
+
+    a=32'hAA; b=32'hF0; alu_ctrl=4'd2;
+    #10;
+    $display("AND: a=%h b=%h result=%h (expect 0xA0)",a,b,result);
+    alu_ctrl=4'd3;
+    #10;
+    $display("OR: a=%h b=%h result=%h (expect 0xFA)",a,b,result);
+    alu_ctrl=4'd4;
+    #10;
+    $display("XOR: a=%h b=%h result=%h (expect 0x5A)",a,b,result);
+
+    //TESTING SLL
+
+    a=32'd3; b=32'd2; alu_ctrl=4'd5;
+    #10;
+    $display("SLL: a=%d b=%d result=%d (expect 12)",a,b,result);
+
+    //TESTING SRL
+
+    a=32'd8; b=32'd2; alu_ctrl=4'd6;
+    #10;
+    $display("SRL: a=%d b=%d result=%d (expect 2)",a,b,result);
+
+    //TESTING SLT
+
+    a=32'hFFFFFFFF; b=32'h01; alu_ctrl=4'd7;
+    #10;
+    $display("SLT: a=%d b=%d result=%d (expect 1)",a,b,result);
+
+    //TESTING SLTU
+
+    a=32'hFFFFFFFF; b=32'h00000001; alu_ctrl=4'd8;
+    #10;
+    $display("SLTU: a=%d b=%d result=%d (expect 0)",a,b,result);
+
+    //TESTING SUB WITH NON ZERO
+
+    a=32'd7; b=32'd2; alu_ctrl=4'd1;
+    #10;
+    $display("SUB: a=%d b=%d result=%d zero flag=%b (expect 5 , with zero flag being low)",a,b,result,zero);
+
+    // SRL VS SRA ON NEGATIVE NUMBER
+
+    a=32'hFFFFFFFF; b=32'd1 ; alu_ctrl=4'd6;
+    #10;
+    $display("SRL: %h >> 1 = %h (expect 7fffffff)",a,result);
+    alu_ctrl=4'd9;
+    #10;
+    $display("SRA: %h >>> 1 = %h (expect ffffffff)",a,result);
+
+    $finish;
+end
+
+endmodule
+
+// ===== tb/core/branch_comp_tb.v =====
+`timescale 1ns/1ps
+module branch_comp_tb;
+
+    reg [31:0] rs1_data, rs2_data;
+    reg [2:0] funct3;
+    wire branch_taken;
+
+    branch_comp uut (.rs1_data(rs1_data),.rs2_data(rs2_data),.funct3(funct3),.branch_taken(branch_taken));
+
+    initial begin
+        $dumpfile("branch_comp.vcd");
+        $dumpvars(0,branch_comp_tb);
+
+        // BEQ: equal (expect 1)
+        rs1_data = 32'd10; rs2_data = 32'd10; funct3 = 3'b000; 
+        #10;
+        $display("BEQ equal: taken=%b (expect 1)",branch_taken);
+
+        // BEQ: not equal (expect 0)
+        rs1_data = 32'd10; rs2_data = 32'd11; funct3 = 3'b000; 
+        #10;
+        $display("BEQ not equal: taken=%b (expect 0)",branch_taken);
+
+        // BNE: not equal (expect 1)
+        rs1_data = 32'd5; rs2_data = 32'd7; funct3 = 3'b001;
+        #10;
+        $display("BNE not equal: taken=%b (expect 1)",branch_taken);
+
+        // BNE: equal (expect 0)
+        rs1_data = 32'd7; rs2_data = 32'd7; funct3 = 3'b001; 
+        #10;
+        $display("BNE equal: taken=%b (expect 0)",branch_taken);
+
+        // BLT: signed, rs1 < rs2 (expect 1), use negative rs1
+        rs1_data = -32'sd5; rs2_data = 32'd3; funct3 = 3'b100; 
+        #10;
+        $display("BLT (-5 < 3): taken=%b (expect 1)",branch_taken);
+
+        // BLT: signed, rs1 > rs2 (expect 0)
+        rs1_data = 32'd10; rs2_data = -32'sd5; funct3 = 3'b100; 
+        #10;
+        $display("BLT (10 < -5): taken=%b (expect 0)",branch_taken);
+
+        // BGE: signed, rs1 >= rs2 (expect 1)
+        rs1_data = 32'd10; rs2_data = -32'sd5; funct3 = 3'b101; 
+        #10;
+        $display("BGE (10 >= -5): taken=%b (expect 1)",branch_taken);
+
+        // BGE: signed, rs1 < rs2 (expect 0)
+        rs1_data = -32'sd5; rs2_data = 32'd10; funct3 = 3'b101; 
+        #10;
+        $display("BGE (-5 >= 10): taken=%b (expect 0)",branch_taken);
+
+        // BLTU: unsigned, big unsigned value on rs1 (would look negative signed, expect 0 here since it's larger unsigned)
+        rs1_data = 32'hFFFFFFFF; rs2_data = 32'd3; funct3 = 3'b110; 
+        #10;
+        $display("BLTU (0xFFFFFFFF < 3): taken=%b (expect 0)",branch_taken);
+
+        // BLTU: unsigned, rs1 < rs2 (expect 1)
+        rs1_data = 32'd2; rs2_data = 32'd3; funct3 = 3'b110; 
+        #10;
+        $display("BLTU (2 < 3): taken=%b (expect 1)",branch_taken);
+
+        // BGEU: unsigned, rs1 >= rs2 (expect 1), same 0xFFFFFFFF case flipped
+        rs1_data = 32'hFFFFFFFF; rs2_data = 32'd3; funct3 = 3'b111; 
+        #10;
+        $display("BGEU (0xFFFFFFFF >= 3): taken=%b (expect 1)",branch_taken);
+
+        // BGEU: unsigned, rs1 < rs2 (expect 0)
+        rs1_data = 32'd2; rs2_data = 32'd3; funct3 = 3'b111; 
+        #10;
+        $display("BGEU (2 >= 3): taken=%b (expect 0)",branch_taken);
+
+        //default funct3 (not a branch op): expect 0, safety check
+        rs1_data = 32'd1; rs2_data = 32'd1; funct3 = 3'b010; 
+        #10;
+        $display("invalid funct3: taken=%b (expect 0)",branch_taken);
+
+        $display("branch_comp_tb done");
+        $finish;
+    end
+
+endmodule
+
+// ===== tb/core/control_unit_tb.v =====
+// control_unit_tb.v
+`timescale 1ns/1ps
+module control_unit_tb;
+
+    reg [6:0] opcode;
+    reg [2:0] funct3;
+
+    wire reg_write, mem_read, mem_write, branch, jump, alu_src, mem_unsigned, alu_a_pc;
+    wire [1:0] result_src, alu_op, mem_size;
+
+    control_unit uut (.opcode(opcode),.funct3(funct3),.reg_write(reg_write),.mem_read(mem_read),.mem_write(mem_write),.branch(branch),.jump(jump),.alu_src(alu_src),.result_src(result_src),.alu_op(alu_op),.mem_size(mem_size),.mem_unsigned(mem_unsigned),.alu_a_pc(alu_a_pc));
+
+    initial begin
+        $dumpfile("control_unit.vcd");
+        $dumpvars(0,control_unit_tb);
+
+        // R type: expect reg_write=1, alu_src=0, alu_op=10, everything else 0
+        opcode = 7'b0110011; funct3 = 3'b000; #10;
+        $display("R-type: rw=%b mr=%b mw=%b br=%b jp=%b as=%b rs=%b op=%b (expect 1 0 0 0 0 0 00 10)",reg_write, mem_read, mem_write, branch, jump, alu_src, result_src, alu_op);
+
+        // I type ALU: expect reg_write=1, alu_src=1, alu_op=10
+        opcode = 7'b0010011; funct3 = 3'b000; #10;
+        $display("I-type: rw=%b as=%b op=%b (expect 1 1 10)", reg_write, alu_src, alu_op);
+
+        // Load word: expect reg_write=1, mem_read=1, alu_src=1, alu_op=00, result_src=01, mem_size=10, mem_unsigned=0
+        opcode = 7'b0000011; funct3 = 3'b010; #10;
+        $display("LW: rw=%b mr=%b as=%b op=%b rs=%b size=%b uns=%b (expect 1 1 1 00 01 10 0)",reg_write, mem_read, alu_src, alu_op, result_src, mem_size, mem_unsigned);
+
+        // Load byte unsigned (LBU): expect mem_size=00, mem_unsigned=1
+        opcode = 7'b0000011; funct3 = 3'b100; #10;
+        $display("LBU: size=%b uns=%b (expect 00 1)", mem_size, mem_unsigned);
+
+        // Store word: expect mem_write=1, alu_src=1, alu_op=00, reg_write=0
+        opcode = 7'b0100011; funct3 = 3'b010; #10;
+        $display("SW: rw=%b mw=%b as=%b op=%b (expect 0 1 1 00)", reg_write, mem_write, alu_src, alu_op);
+
+        // Branch: expect branch=1, alu_src=0, reg_write=0
+        opcode = 7'b1100011; funct3 = 3'b000; #10;
+        $display("BEQ: rw=%b br=%b as=%b (expect 0 1 0)",reg_write, branch, alu_src);
+
+        // JAL: expect reg_write=1, jump=1, result_src=10
+        opcode = 7'b1101111; funct3 = 3'b000; #10;
+        $display("JAL: rw=%b jp=%b rs=%b (expect 1 1 10)", reg_write, jump, result_src);
+
+        // JALR: expect reg_write=1, jump=1, alu_src=1, result_src=10
+        opcode = 7'b1100111; funct3 = 3'b000; #10;
+        $display("JALR: rw=%b jp=%b as=%b rs=%b (expect 1 1 1 10)", reg_write, jump, alu_src, result_src);
+
+        // LUI: bypasses the ALU (alu_32 has no pass-through op), expect
+        // reg_write=1, result_src=11 (immediate passthrough), alu_src=dont care
+        opcode = 7'b0110111; funct3 = 3'b000; #10;
+        $display("LUI: rw=%b rs=%b (expect 1 11)", reg_write, result_src);
+
+        // AUIPC: expect reg_write=1, alu_src=1, alu_op=00, alu_a_pc=1
+        opcode = 7'b0010111; funct3 = 3'b000; #10;
+        $display("AUIPC: rw=%b as=%b op=%b apc=%b (expect 1 1 00 1)",reg_write,alu_src,alu_op,alu_a_pc);
+
+        // unmapped opcode: everything should sit at safe defaults
+        opcode = 7'b1111111; funct3 = 3'b000; #10;
+        $display("unmapped: rw=%b mr=%b mw=%b br=%b jp=%b (expect 0 0 0 0 0)",reg_write,mem_read,mem_write,branch,jump);
+
+        $display("control_unit_tb done");
+        $finish;
+    end
+
+endmodule
+
+// ===== tb/core/core_pipelined_ex_tb.v =====
+`timescale 1ns/1ps
+module core_pipelined_ex_tb;
+
+    reg clk, rst;
+    wire [31:0] pc_current;
+    wire [31:0] instruction;
+    wire [31:0] if_id_instr_out, if_id_pc_out;
+
+    wire [4:0] id_ex_rd_out;
+    wire [31:0] id_ex_rs1_data_out, id_ex_rs2_data_out, id_ex_imm_out;
+    wire id_ex_reg_write_out, id_ex_mem_read_out, id_ex_mem_write_out, id_ex_branch_out, id_ex_jump_out, id_ex_alu_src_out;
+    wire [1:0] id_ex_result_src_out, id_ex_alu_op_out;
+
+    wire [31:0] ex_mem_alu_result_out, ex_mem_rs2_data_out, ex_mem_pc_out, ex_mem_imm_out;
+    wire [4:0] ex_mem_rd_out;
+    wire ex_mem_reg_write_out, ex_mem_mem_read_out, ex_mem_mem_write_out;
+    wire [1:0] ex_mem_result_src_out, ex_mem_mem_size_out;
+    wire ex_mem_mem_unsigned_out;
+
+    core_pipelined uut (
+        .clk(clk),
+        .rst(rst),
+        .instruction(instruction),
+        .pc_current(pc_current),
+        .if_id_instr_out(if_id_instr_out),
+        .if_id_pc_out(if_id_pc_out),
+        .id_ex_rd_out(id_ex_rd_out),
+        .id_ex_rs1_data_out(id_ex_rs1_data_out),
+        .id_ex_rs2_data_out(id_ex_rs2_data_out),
+        .id_ex_imm_out(id_ex_imm_out),
+        .id_ex_reg_write_out(id_ex_reg_write_out),
+        .id_ex_mem_read_out(id_ex_mem_read_out),
+        .id_ex_mem_write_out(id_ex_mem_write_out),
+        .id_ex_result_src_out(id_ex_result_src_out),
+        .id_ex_branch_out(id_ex_branch_out),
+        .id_ex_jump_out(id_ex_jump_out),
+        .id_ex_alu_src_out(id_ex_alu_src_out),
+        .id_ex_alu_op_out(id_ex_alu_op_out),
+        .ex_mem_alu_result_out(ex_mem_alu_result_out),
+        .ex_mem_rs2_data_out(ex_mem_rs2_data_out),
+        .ex_mem_pc_out(ex_mem_pc_out),
+        .ex_mem_imm_out(ex_mem_imm_out),
+        .ex_mem_rd_out(ex_mem_rd_out),
+        .ex_mem_reg_write_out(ex_mem_reg_write_out),
+        .ex_mem_mem_read_out(ex_mem_mem_read_out),
+        .ex_mem_mem_write_out(ex_mem_mem_write_out),
+        .ex_mem_result_src_out(ex_mem_result_src_out),
+        .ex_mem_mem_size_out(ex_mem_mem_size_out),
+        .ex_mem_mem_unsigned_out(ex_mem_mem_unsigned_out));
+
+    instr_mem u_instr_mem (.pc_current(pc_current),.instruction(instruction));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("core_pipelined_ex.vcd");
+        $dumpvars(0,core_pipelined_ex_tb);
+
+        clk = 0; rst = 1;
+        @(posedge clk); 
+        #1;
+        rst = 0;
+
+        // preload distinct, non-uniform values into x1/x2 while reset is dropping
+        uut.u_regfile.registers[1] = 32'd77;
+        uut.u_regfile.registers[2] = 32'd13;
+
+        // cycle1: instr1 (add) lands in if_id
+        @(posedge clk); 
+        #1;
+
+        // cycle2: instr1 is being decoded in ID now
+        @(posedge clk); 
+        #1;
+
+        // cycle3: instr1's EX result lands in ex_mem_reg
+        @(posedge clk); 
+        #1;
+        $display("instr1 add x3,x1,x2 --> alu_result=%0d rd=%0d rw=%b (expect 90 rd=3 rw=1)",ex_mem_alu_result_out,ex_mem_rd_out,ex_mem_reg_write_out);
+
+        @(posedge clk); 
+        #1;
+        $display("instr2 sub x4,x1,x2 --> alu_result=%0d rd=%0d (expect 64 rd=4)",ex_mem_alu_result_out,ex_mem_rd_out);
+
+        @(posedge clk); 
+        #1;
+        $display("instr3 addi x5,x1,-7 --> alu_result=%0d rd=%0d (expect 70 rd=5)",ex_mem_alu_result_out,ex_mem_rd_out);
+
+        @(posedge clk); 
+        #1;
+        $display("instr4 and x6,x1,x2 --> alu_result=%0d rd=%0d (expect 13 rd=6)",ex_mem_alu_result_out,ex_mem_rd_out);
+
+        // instr5 (auipc) lands in ex_mem here; instr6 (beq) is combinationally
+        // in EX right now too
+        @(posedge clk); 
+        #1;
+        $display("instr5 auipc x7,1 --> alu_result=%0d pc_in=%0d rd=%0d (expect 4112 pc_in=16 rd=7)",ex_mem_alu_result_out,ex_mem_pc_out,ex_mem_rd_out);
+        $display("instr6 beq x1,x2,8 (in EX now) --> branch=%b branch_taken_final=%b (expect branch=1 taken=0, 77 != 13)",id_ex_branch_out,uut.ex_branch_taken_final);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/core/core_pipelined_id_tb.v =====
+`timescale 1ns/1ps
+module core_pipelined_id_tb;
+
+    reg clk, rst;
+    wire [31:0] pc_current;
+    wire [31:0] instruction;
+    wire [31:0] if_id_instr_out, if_id_pc_out;
+
+    wire [4:0] id_ex_rd_out;
+    wire [31:0] id_ex_rs1_data_out, id_ex_rs2_data_out, id_ex_imm_out;
+    wire id_ex_reg_write_out, id_ex_mem_read_out, id_ex_mem_write_out, id_ex_branch_out, id_ex_jump_out, id_ex_alu_src_out;
+    wire [1:0] id_ex_result_src_out, id_ex_alu_op_out;
+
+    core_pipelined uut (
+        .clk(clk),
+        .rst(rst),
+        .instruction(instruction),
+        .pc_current(pc_current),
+        .if_id_instr_out(if_id_instr_out),
+        .if_id_pc_out(if_id_pc_out),
+        .id_ex_rd_out(id_ex_rd_out),
+        .id_ex_rs1_data_out(id_ex_rs1_data_out),
+        .id_ex_rs2_data_out(id_ex_rs2_data_out),
+        .id_ex_imm_out(id_ex_imm_out),
+        .id_ex_reg_write_out(id_ex_reg_write_out),
+        .id_ex_mem_read_out(id_ex_mem_read_out),
+        .id_ex_mem_write_out(id_ex_mem_write_out),
+        .id_ex_branch_out(id_ex_branch_out),
+        .id_ex_jump_out(id_ex_jump_out),
+        .id_ex_alu_src_out(id_ex_alu_src_out),
+        .id_ex_result_src_out(id_ex_result_src_out),
+        .id_ex_alu_op_out(id_ex_alu_op_out));
+
+    instr_mem u_instr_mem (.pc_current(pc_current),.instruction(instruction));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("core_pipelined_id.vcd");
+        $dumpvars(0,core_pipelined_id_tb);
+
+        clk = 0; rst = 1;
+        @(posedge clk);
+        #1;
+        rst = 0;
+
+        // preload distinct, non-uniform values into x1/x2 while reset is dropping
+        uut.u_regfile.registers[1] = 32'd77;
+        uut.u_regfile.registers[2] = 32'd13;
+
+        // cycle1: instr1 (add) lands in if_id, id stage sees garbage/prev instr, ignore
+        @(posedge clk); 
+        #1;
+
+        // cycle2: instr1 (add x3,x1,x2) is being decoded in ID now
+        @(posedge clk); 
+        #1;
+        $display("instr1 add x3,x1,x2 --> rd=%0d rs1_data=%0d rs2_data=%0d rw=%b mr=%b mw=%b br=%b jp=%b as=%b rs=%b op=%b",id_ex_rd_out,id_ex_rs1_data_out,id_ex_rs2_data_out,id_ex_reg_write_out,id_ex_mem_read_out,id_ex_mem_write_out,id_ex_branch_out,id_ex_jump_out,id_ex_alu_src_out,id_ex_result_src_out,id_ex_alu_op_out);
+        $display("                (expect rd=3 rs1_data=77 rs2_data=13 rw=1 mr=0 mw=0 br=0 jp=0 as=0 rs=00 op=10)");
+
+        @(posedge clk); 
+        #1;
+        $display("instr2 addi x4,x1,-5 --> rd=%0d rs1_data=%0d imm=%0d rw=%b mr=%b mw=%b br=%b jp=%b as=%b rs=%b op=%b",id_ex_rd_out,id_ex_rs1_data_out,$signed(id_ex_imm_out),id_ex_reg_write_out,id_ex_mem_read_out,id_ex_mem_write_out,id_ex_branch_out,id_ex_jump_out,id_ex_alu_src_out,id_ex_result_src_out,id_ex_alu_op_out);
+        $display("                 (expect rd=4 rs1_data=77 imm=-5 rw=1 mr=0 mw=0 br=0 jp=0 as=1 rs=00 op=10)");
+
+        @(posedge clk); 
+        #1;
+        $display("instr3 lw x5,0(x1) --> rd=%0d rs1_data=%0d imm=%0d rw=%b mr=%b mw=%b br=%b jp=%b as=%b rs=%b op=%b",id_ex_rd_out,id_ex_rs1_data_out,id_ex_imm_out,id_ex_reg_write_out,id_ex_mem_read_out,id_ex_mem_write_out,id_ex_branch_out,id_ex_jump_out,id_ex_alu_src_out,id_ex_result_src_out,id_ex_alu_op_out);
+        $display("               (expect rd=5 rs1_data=77 imm=0 rw=1 mr=1 mw=0 br=0 jp=0 as=1 rs=01 op=00)");
+
+        @(posedge clk);
+        #1;
+        $display("instr4 sw x2,0(x1) --> rs1_data=%0d rs2_data=%0d imm=%0d rw=%b mr=%b mw=%b br=%b jp=%b as=%b rs=%b op=%b",id_ex_rs1_data_out,id_ex_rs2_data_out,id_ex_imm_out,id_ex_reg_write_out,id_ex_mem_read_out,id_ex_mem_write_out,id_ex_branch_out,id_ex_jump_out,id_ex_alu_src_out,id_ex_result_src_out,id_ex_alu_op_out);
+        $display("               (expect rs1_data=77 rs2_data=13 imm=0 rw=0 mr=0 mw=1 br=0 jp=0 as=1 rs=00 op=00)");
+
+        @(posedge clk); 
+        #1;
+        $display("instr5 beq x1,x2,+8 --> rs1_data=%0d rs2_data=%0d rw=%b mr=%b mw=%b br=%b jp=%b as=%b rs=%b op=%b",id_ex_rs1_data_out,id_ex_rs2_data_out,id_ex_reg_write_out,id_ex_mem_read_out,id_ex_mem_write_out,id_ex_branch_out,id_ex_jump_out,id_ex_alu_src_out,id_ex_result_src_out,id_ex_alu_op_out);
+        $display("                (expect rs1_data=77 rs2_data=13 rw=0 mr=0 mw=0 br=1 jp=0 as=0 rs=00 op=01)");
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/core/core_pipelined_if_tb.v =====
+`timescale 1ns/1ps
+module core_pipelined_if_tb;
+
+    reg clk, rst;
+    wire [31:0] pc_current;
+    wire [31:0] instruction;
+    wire [31:0] if_id_instr_out, if_id_pc_out;
+
+    core_pipelined uut (
+        .clk(clk),
+        .rst(rst),
+        .instruction(instruction),
+        .pc_current(pc_current),
+        .if_id_instr_out(if_id_instr_out),
+        .if_id_pc_out(if_id_pc_out));
+
+    instr_mem u_instr_mem (.pc_current(pc_current),.instruction(instruction));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("core_pipelined_if.vcd");
+        $dumpvars(0,core_pipelined_if_tb);
+
+        clk = 0; rst = 1;
+        @(posedge clk); 
+        #1;
+        $display("reset: pc=%h if_id_instr=%h if_id_pc=%h (expect 00000000 00000000 00000000)",pc_current,if_id_instr_out,if_id_pc_out);
+
+        rst = 0;
+        @(posedge clk); 
+        #1;
+        $display("cycle1: pc=%h if_id_instr=%h if_id_pc=%h (expect 00000004 00000093 00000000)",pc_current,if_id_instr_out,if_id_pc_out);
+
+        @(posedge clk); 
+        #1;
+        $display("cycle2: pc=%h if_id_instr=%h if_id_pc=%h (expect 00000008 00100113 00000004)",pc_current,if_id_instr_out,if_id_pc_out);
+
+        @(posedge clk);
+        #1;
+        $display("cycle3: pc=%h if_id_instr=%h if_id_pc=%h (expect 0000000c 00000213 00000008)",pc_current,if_id_instr_out,if_id_pc_out);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/core/data_mem_tb.v =====
+`timescale 1ns/1ps
+module data_mem_tb;
+
+reg clk;
+reg [11:0] addr;
+reg [31:0] wdata;
+reg [3:0] byte_en;
+reg mem_write;
+reg mem_read;
+wire [31:0] rdata;
+integer i;
+
+data_mem uut(.clk(clk),.addr(addr),.wdata(wdata),.byte_en(byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(rdata));
+
+initial clk = 0;
+always #5 clk = ~clk;
+
+initial begin
+    $dumpfile("data_mem.vcd");
+    $dumpvars(0,data_mem_tb);
+
+    // memory powers up uninitialized so you have to zero it first
+    for (i = 0; i < 4096; i = i + 1)
+    begin
+        uut.mem[i] = 8'h00;
+    end
+
+    // TESTING SW at address 0, full byte_en
+
+    addr = 0; wdata = 32'hAABBCCDD; byte_en = 4'b1111;
+    mem_write = 1; mem_read = 0;
+    #10;
+    mem_write = 0; mem_read = 1;
+    #10;
+    $display("SW at 0: rdata=%h (expect aabbccdd)",rdata);
+
+    // TESTING SB at address 9, lane 1 of word group 8 to 11
+
+    addr = 9; wdata = 32'hFFFFFFFF; byte_en = 4'b0010;
+    mem_write = 1; mem_read = 0;
+    #10;
+    mem_write = 0; mem_read = 1;
+    #10;
+    $display("SB at 9 so lane 1 : rdata=%h (expect 0000ff00)",rdata);
+
+    // TESTING SH at address 10, lanes 2 to 3 of same word group
+    // byte at lane 1 (from previous test) must survive untouched
+
+    addr = 10; wdata = 32'hFFFF0000; byte_en = 4'b1100;
+    mem_write = 1; mem_read = 0;
+    #10;
+    mem_write = 0; mem_read = 1;
+    #10;
+    $display("SH at 10 so lanes 2 and 3 : rdata=%h (expect ffffff00, lane 1 preserved)",rdata);
+
+    // TESTING mem_read=0 gates rdata to 0
+
+    addr = 0; mem_read = 0;
+    #10;
+    $display("mem_read=0: rdata=%h (expect 00000000)",rdata);
+
+    // TESTING unwritten address reads back 0
+
+    addr = 200; mem_read = 1;
+    #10;
+    $display("unwritten at 200 : rdata=%h (expect 00000000)",rdata);
+
+    $finish;
+end
+
+endmodule
+
+// ===== tb/core/immgen_tb.v =====
+`timescale 1ns/1ps
+module immgen_tb;
+
+reg [31:0] instr;
+wire [31:0] imm;
+
+immgen uut(.instr(instr),.imm(imm));
+
+initial begin
+    $dumpfile("immgen.vcd");
+    $dumpvars(0,immgen_tb);
+
+    // TESTING I TYPE (ADDI x1, x0, 5) with positive imm
+
+    instr = 32'b000000000101_00000_000_00001_0010011;
+    #10;
+    $display("I type ADDI: imm=%d (expect 5)",$signed(imm));
+
+    // TESTING I TYPE (ADDI x1, x0, -5) with negative imm, sign extension check
+
+    instr = 32'b111111111011_00000_000_00001_0010011;
+    #10;
+    $display("I type ADDI: imm=%d (expect -5)",$signed(imm));
+
+    // TESTING I TYPE (JALR) meaning different opcode, same slicing
+
+    instr = 32'b111111111100_00001_000_00010_1100111;
+    #10;
+    $display("I type JALR: imm=%d (expect -4)",$signed(imm));
+
+    // TESTING S TYPE (SW x2, 8(x3)) with positive imm
+
+    instr = 32'b0000000_00010_00011_010_01000_0100011;
+    #10;
+    $display("S type SW: imm=%d (expect 8)",$signed(imm));
+
+    // TESTING S TYPE (SW x2, -8(x3)) with negative imm
+
+    instr = 32'b1111111_00010_00011_010_11000_0100011;
+    #10;
+    $display("S type SW: imm=%d (expect -8)",$signed(imm));
+
+    // TESTING B TYPE (BEQ x1, x2, +16) meaning positive, bit-scrambled
+
+    instr = 32'b0_000000_00010_00001_000_1000_0_1100011;
+    #10;
+    $display("B type BEQ: imm=%d (expect 16)",$signed(imm));
+
+    // TESTING B TYPE (BEQ x1, x2, -16) meaning negative, bit-scrambled
+
+    instr = 32'b1_111111_00010_00001_000_1000_1_1100011;
+    #10;
+    $display("B type BEQ: imm=%d (expect -16)",$signed(imm));
+
+    // TESTING U TYPE (LUI x5, 0x12345)
+
+    instr = 32'b00010010001101000101_00101_0110111;
+    #10;
+    $display("U type LUI: imm=%h (expect 12345000)",imm);
+
+    // TESTING U TYPE (AUIPC x5, 0xFFFFF) so all 1s upper bits
+
+    instr = 32'b11111111111111111111_00101_0010111;
+    #10;
+    $display("U type AUIPC: imm=%h (expect fffff000)",imm);
+
+    // TESTING J TYPE (JAL x1, +2048) meaning positive, bit-scrambled
+
+    instr = 32'b0_0000000000_1_00000000_00001_1101111;
+    #10;
+    $display("J type JAL: imm=%d (expect 2048)",$signed(imm));
+
+    // TESTING J TYPE (JAL x1, -2048) meaning negative, bit-scrambled
+
+    instr = 32'b1_0000000000_1_11111111_00001_1101111;
+    #10;
+    $display("J type JAL: imm=%d (expect -2048)",$signed(imm));
+
+    // TESTING R TYPE (ADD x1, x2, x3) this is the default case, no immediate
+
+    instr = 32'b0000000_00011_00010_000_00001_0110011;
+    #10;
+    $display("R type ADD: imm=%d (expect 0)",$signed(imm));
+
+    $finish;
+end
+
+endmodule
+
+// ===== tb/core/instr_decoder_tb.v =====
+`timescale 1ns/1ps
+module instr_decoder_tb;
+
+    reg [31:0] instr;
+    wire [6:0] opcode;
+    wire [4:0] rd;
+    wire [4:0] rs1;
+    wire [4:0] rs2;
+    wire [2:0] funct3;
+    wire [6:0] funct7;
+
+    instr_decoder uut (.instr(instr),.opcode(opcode),.rd(rd),.rs1(rs1),.rs2(rs2),.funct3(funct3),.funct7(funct7));
+
+    initial begin
+        // Test 1: addi x1,x0,5 which is 0x00500093
+        instr = 32'h00500093;
+        #10;
+        $display("Test1 addi x1,x0,5: opcode=%b rd=%d rs1=%d rs2=%d funct3=%b funct7=%b",opcode,rd,rs1,rs2,funct3,funct7);
+
+        // Test 2: add x3,x1,x2 which is 0x002081b3
+        instr = 32'h002081b3;
+        #10;
+        $display("Test2 add x3,x1,x2: opcode=%b rd=%d rs1=%d rs2=%d funct3=%b funct7=%b",opcode,rd,rs1,rs2,funct3,funct7);
+
+        // Test 3: sub x5,x1,x2 which is 0x402082b3
+        instr = 32'h402082b3;
+        #10;
+        $display("Test3 sub x5,x1,x2: opcode=%b rd=%d rs1=%d rs2=%d funct3=%b funct7=%b",opcode,rd,rs1,rs2,funct3,funct7);
+
+        $finish;
+    end
+
+endmodule
+
+// ===== tb/core/instr_mem_tb.v =====
+module instr_mem_tb;
+
+    reg [31:0] pc_current;
+    wire [31:0] instruction;
+
+    instr_mem uut (.pc_current(pc_current),.instruction(instruction));
+
+    initial begin
+        $display("--- instr_mem testbench start ---");
+
+        // Test 1:pc=0 thus it should fetch mem[0] = addi x1,x0,5
+        pc_current = 32'h00000000;
+        #10;
+        $display("pc=%0d instruction=%h",pc_current,instruction);
+        if (instruction !== 32'h00500093)
+            $display("FAIL: expected 00500093, got %h",instruction);
+        else
+            $display("PASS");
+
+        // Test 2: pc=4 thus is should fetch mem[1] = addi x2,x0,10
+        pc_current = 32'h00000004;
+        #10;
+        $display("pc=%0d instruction=%h",pc_current,instruction);
+        if (instruction !== 32'h00a00113)
+            $display("FAIL: expected 00a00113, got %h",instruction);
+        else
+            $display("PASS");
+
+        // Test 3: pc=8 thus it should fetch mem[2]= addi x3,x0,15
+        pc_current = 32'h00000008;
+        #10;
+        $display("pc=%0d instruction=%h",pc_current,instruction);
+        if (instruction !== 32'h00f00193)
+            $display("FAIL: expected 00f00193, got %h",instruction);
+        else
+            $display("PASS");
+
+        $display("--- instr_mem testbench end ---");
+        $finish;
+    end
+
+endmodule
+
+// ===== tb/core/mem_interface_tb.v =====
+`timescale 1ns/1ps
+module mem_interface_tb;
+
+reg clk;
+reg [31:0] addr;
+reg [31:0] wdata;
+reg [3:0] byte_en;
+reg mem_write;
+reg mem_read;
+wire [31:0] rdata;
+integer i;
+
+mem_interface uut(.clk(clk),.addr(addr),.wdata(wdata),.byte_en(byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(rdata));
+
+initial clk = 0;
+always #5 clk = ~clk;
+
+initial begin
+    $dumpfile("mem_interface.vcd");
+    $dumpvars(0,mem_interface_tb);
+
+    // RAM inside the decoder powers up uninitialized, same as data_mem/regfile
+    for (i = 0; i < 4096; i = i + 1)
+        uut.ram.mem[i] = 8'h00;
+
+    // TESTING RAM range write/read (addr 0 well within the range)
+
+    addr = 32'h00000000; wdata = 32'hFFFFFFFF; byte_en = 4'b1111;
+    mem_write = 1; mem_read = 0;
+    #10;
+    mem_write = 0; mem_read = 1;
+    #10;
+    $display("RAM at 0x0: rdata=%h (expect ffffffff)",rdata);
+
+    // TESTING RAM range write/read (addr 100, still inside RAM range)
+
+    addr = 32'h00000064; wdata = 32'h11223344; byte_en = 4'b1111;
+    mem_write = 1; mem_read = 0;
+    #10;
+    mem_write = 0; mem_read = 1;
+    #10;
+    $display("RAM at 0x64: rdata=%h (expect 11223344)",rdata);
+
+    // TESTING RAM range upper boundary (addr 0x0000_0FFC, last word in range)
+
+    addr = 32'h00000FFC; wdata = 32'hFFFFFFFF; byte_en = 4'b1111;
+    mem_write = 1; mem_read = 0;
+    #10;
+    mem_write = 0; mem_read = 1;
+    #10;
+    $display("RAM at 0xFFC (boundary): rdata=%h (expect ffffffff)",rdata);
+
+    // TESTING first address just outside RAM range (0x0000_1000) does NOT reach RAM
+    // attempt a write here, then read back address 0 to confirm RAM untouched
+
+    addr = 32'h00001000; wdata = 32'hFFFFFFFF; byte_en = 4'b1111;
+    mem_write = 1; mem_read = 0;
+    #10;
+    mem_write = 0; mem_read = 1;
+    #10;
+    $display("just outside RAM at 0x1000: rdata=%h (expect 00000000, stub)",rdata);
+
+    addr = 32'h00000000; mem_read = 1;
+    #10;
+    $display("RAM at 0x0 after stray write attempt: rdata=%h (expect ffffffff, untouched)",rdata);
+
+    // TESTING reserved MMIO range write attempt (addr 0x1000_0000)
+    // should be silently ignored, read back as stub 0
+
+    addr = 32'h10000000; wdata = 32'hAAAAAAAA; byte_en = 4'b1111;
+    mem_write = 1; mem_read = 0;
+    #10;
+    mem_write = 0; mem_read = 1;
+    #10;
+    $display("MMIO at 0x10000000: rdata=%h (expect 00000000, stub)",rdata);
+
+    // TESTING unmapped address far outside both ranges
+
+    addr = 32'h20000000; mem_read = 1; mem_write = 0;
+    #10;
+    $display("unmapped at 0x20000000: rdata=%h (expect 00000000, stub)",rdata);
+
+    $finish;
+end
+
+endmodule
+
+// ===== tb/core/pc_tb.v =====
+`timescale 1ns/1ps
+module pc_tb;
+
+    reg clk;
+    reg rst;
+    reg [31:0] pc_next;
+    wire [31:0] pc_current;
+
+    pc uut (.clk(clk),.rst(rst),.pc_next(pc_next),.pc_current(pc_current));
+
+    always #5 clk = ~clk;
+    initial begin
+        $dumpfile("pc_tb.vcd");
+        $dumpvars(0, pc_tb);
+
+        // Case 1: Testing reset behavior
+        clk = 0;
+        rst = 1;
+        pc_next = 32'hAAAA_AAAA;   //garbage to be ignored during reset
+
+        @(posedge clk);   //sync reset happens here
+        #1;               // small delay to let the update settle before checking
+        if (pc_current !== 32'b0)
+            $display("FAIL: reset did not drive pc_current to 0, got %h", pc_current);
+        else
+            $display("PASS: reset drives pc_current to 0");
+
+        // Case 2: Normal Operation
+        rst = 0;
+        pc_next = 32'h0000_0004;
+
+        //check to see PC has not changed yet
+        #1;
+        if (pc_current !== 32'b0)
+            $display("FAIL: pc_current changed before clock edge, combinational leak, got %h", pc_current);
+        else
+            $display("PASS: pc_current unchanged before clock edge");
+
+        @(posedge clk);
+        #1;
+        if (pc_current !== 32'h0000_0004)
+            $display("FAIL: pc_current did not latch pc_next, got %h", pc_current);
+        else
+            $display("PASS: pc_current latched pc_next correctly");
+
+        // Case 3: new value mid cycle
+        pc_next = 32'h0000_0008;
+        #1;
+        if (pc_current !== 32'h0000_0004)
+            $display("FAIL: pc_current updated mid-cycle without a clock edge, got %h", pc_current);
+        else
+            $display("PASS: pc_current holds steady mid-cycle");
+
+        @(posedge clk);
+        #1;
+        if (pc_current !== 32'h0000_0008)
+            $display("FAIL: pc_current did not update on this edge, got %h", pc_current);
+        else
+            $display("PASS: pc_current updated correctly on clock edge");
+
+        // Case 4: Checking large border value
+        pc_next = 32'hFFFF_FFFC; //last word aligned adress in a 32 bit space
+        @(posedge clk);
+        #1;
+        if (pc_current !== 32'hFFFF_FFFC)
+            $display("FAIL: pc_current did not handle max boundary value, got %h", pc_current);
+        else
+            $display("PASS: pc_current handles boundary value correctly");
+
+        // Case 5: Reset mid operation
+        rst = 1;
+        @(posedge clk);
+        #1;
+        if (pc_current !== 32'b0)
+            $display("FAIL: mid-operation reset did not drive pc_current to 0, got %h", pc_current);
+        else
+            $display("PASS: mid-operation reset works correctly");
+
+        $display("All tests complete.");
+        $finish;
+    end
+
+endmodule
+
+// ===== tb/core/pipeline_regs_tb.v =====
+`timescale 1ns/1ps
+module pipeline_regs_tb;
+
+    reg clk, rst;
+
+    // IF/ID
+    reg [31:0] instr_in, pc_in;
+    wire [31:0] instr_out, pc_out;
+    if_id_reg u_ifid (.clk(clk),.rst(rst),.instr_in(instr_in),.pc_in(pc_in),.instr_out(instr_out),.pc_out(pc_out));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("pipeline_regs.vcd");
+        $dumpvars(0,pipeline_regs_tb);
+
+        clk = 0; rst = 1;
+        instr_in = 32'hFFFFFFFF; pc_in = 32'hAAAAAAAA;
+        @(posedge clk); #1;
+        $display("reset: instr_out=%h pc_out=%h (expect 0 0)",instr_out,pc_out);
+
+        rst = 0;
+        instr_in = 32'h00500093; pc_in = 32'h00000000;
+        @(posedge clk); #1;
+        $display("latch1: instr_out=%h pc_out=%h (expect 00500093 00000000)",instr_out,pc_out);
+
+        instr_in = 32'h12345678; pc_in = 32'h00000004;
+        @(posedge clk); #1;
+        $display("latch2: instr_out=%h pc_out=%h (expect 12345678 00000004)",instr_out,pc_out);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/core/regfile_tb.v =====
+`timescale 1ns/1ps
+module regfile_tb;
+
+    reg clk;
+    reg we;
+    reg [4:0] write_addr;
+    reg [31:0] write_data;
+    reg [4:0] read_addr1;
+    reg [4:0] read_addr2;
+    wire [31:0] read_data1;
+    wire [31:0] read_data2;
+
+    regfile uut (.clk(clk),.we(we),.write_addr(write_addr),.write_data(write_data),.read_addr1(read_addr1),.read_addr2(read_addr2),.read_data1(read_data1),.read_data2(read_data2));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        clk = 0;
+        we = 0;
+        write_addr = 0;
+        write_data = 0;
+        read_addr1 = 0;
+        read_addr2 = 0;
+
+        // Test 1: x0 will always read 0 even with no writes
+        read_addr1 = 5'd0;
+        #1;
+        $display("test 1 --> x0 read: read_data1=%0d (expect 0)",read_data1);
+
+        // Test 2: basic write then read back
+        @(negedge clk);
+        we = 1;
+        write_addr = 5'd5;
+        write_data = 32'd42;
+        @(posedge clk);
+        #1;
+        we = 0;
+        read_addr1 = 5'd5;
+        #1;
+        $display("test 2 --> write x5=42 then read: read_data1=%0d (expect 42)",read_data1);
+
+        // Test 3: attempt write to x0, confirm it still reads 0
+        @(negedge clk);
+        we = 1;
+        write_addr = 5'd0;
+        write_data = 32'hFFFFFFFF;
+        @(posedge clk);
+        #1;
+        we = 0;
+        read_addr1 = 5'd0;
+        #1;
+        $display("test 3 --> write to x0 then read: read_data1=%0d (expect 0)", read_data1);
+
+        // Test 4: same-cycle read before writing ordering
+        // x5 currently holds 42 from test 2. write 100 to x5 on this
+        // edge while read_addr1 is already pointed at x5 thus read should
+        // still show the OLD value (42) until after the edge lands.
+        @(negedge clk);
+        we = 1;
+        write_addr = 5'd5;
+        write_data = 32'd100;
+        read_addr1 = 5'd5;
+        #1; // sample read combinationally, before the posedge write commits
+        $display("test 4: read x5 just before write commits: read_data1=%0d (expect 42, old value)", read_data1);
+        @(posedge clk); // write commits now
+        #1;
+        we = 0;
+        $display("test 4b --> read x5 after write commits: read_data1=%0d (expect 100)", read_data1);
+
+        // test 5: two independent registers via both read ports
+        @(negedge clk);
+        we = 1;
+        write_addr = 5'd10;
+        write_data = 32'd7;
+        @(posedge clk);
+        #1;
+        we = 0;
+        read_addr1 = 5'd5;
+        read_addr2 = 5'd10;
+        #1;
+        $display("test 5 --> dual port read: read_data1=%0d (expect 100), read_data2=%0d (expect 7)", read_data1, read_data2);
+
+        $finish;
+    end
+
+endmodule
+
+// ===== tb/soc/soc_branch_tb.v =====
+`timescale 1ns/1ps
+module soc_tb;
+    reg clk, rst;
+    integer i;
+
+    soc uut (.clk(clk),.rst(rst));
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("soc_tb.vcd");
+        $dumpvars(0,soc_tb);
+
+        rst = 1;
+        #10;
+        rst = 0;
+
+        for (i = 0; i < 82; i = i + 1)
+        begin
+            @(posedge clk);
+            #1;
+        end
+
+        // BEQ
+        $display("x10 (beq taken) = %0d (expect 222)",uut.u_core.u_regfile.registers[10]);
+        $display("x11 (beq not taken) = %0d (expect 111)",uut.u_core.u_regfile.registers[11]);
+        $display("x12 (beq same reg) = %0d (expect 222)",uut.u_core.u_regfile.registers[12]);
+
+        // BNE
+        $display("x13 (bne taken) = %0d (expect 222)",uut.u_core.u_regfile.registers[13]);
+        $display("x14 (bne not taken) = %0d (expect 111)",uut.u_core.u_regfile.registers[14]);
+        $display("x15 (bne same reg) = %0d (expect 111)",uut.u_core.u_regfile.registers[15]);
+
+        // BLT / BGE signed
+        $display("x16 (blt taken, signed) = %0d (expect 222)",uut.u_core.u_regfile.registers[16]);
+        $display("x17 (blt not taken) = %0d (expect 111)",uut.u_core.u_regfile.registers[17]);
+        $display("x18 (bge taken) = %0d (expect 222)",uut.u_core.u_regfile.registers[18]);
+        $display("x19 (bge not taken) = %0d (expect 111)",uut.u_core.u_regfile.registers[19]);
+
+        // BLTU / BGEU unsigned, disagreement pair vs blt/bge which is above
+        $display("x20 (bltu taken) = %0d (expect 222)",uut.u_core.u_regfile.registers[20]);
+        $display("x21 (bltu not taken, disagrees with blt) = %0d (expect 111)",uut.u_core.u_regfile.registers[21]);
+        $display("x22 (bgeu taken, disagrees with bge) = %0d (expect 222)",uut.u_core.u_regfile.registers[22]);
+        $display("x23 (bgeu not taken) = %0d (expect 111)",uut.u_core.u_regfile.registers[23]);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/soc/soc_fib_tb.v =====
+`timescale 1ns/1ps
+module soc_tb;
+    reg clk, rst;
+    integer i;
+
+    soc uut (.clk(clk),.rst(rst));
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("soc_tb.vcd");
+        $dumpvars(0,soc_tb);
+
+        rst = 1;
+        #10;
+        rst = 0;
+
+        // 4 setup instructions + 10 loop iterations x 6 instructions each
+        // + 1 final branch check that exits the loop = 65 dynamic instructions,
+        // give it some headroom as well
+        for (i = 0; i < 80; i = i + 1)
+        begin
+            @(posedge clk);
+            #1;
+        end
+
+        $display("x1 (a, fib result) = %0d (expect 55)",uut.u_core.u_regfile.registers[1]);
+        $display("x2 (b, fib next term) = %0d (expect 89)",uut.u_core.u_regfile.registers[2]);
+        $display("x4 (i, loop counter) = %0d (expect 10)",uut.u_core.u_regfile.registers[4]);
+        $display("x5 (N, loop bound) = %0d (expect 10)",uut.u_core.u_regfile.registers[5]);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/soc/soc_i_type_tb.v =====
+`timescale 1ns/1ps
+module soc_tb;
+    reg clk, rst;
+    integer i;
+
+    soc uut (.clk(clk),.rst(rst));
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("soc_tb.vcd");
+        $dumpvars(0,soc_tb);
+
+        rst = 1;
+        #10;
+        rst = 0;
+
+        for (i = 0; i < 14; i = i + 1)
+        begin
+            @(posedge clk);
+            #1;
+        end
+
+        // basic I-type arithmetic
+        $display("x10 (addi) = %0d (expect 15)",uut.u_core.u_regfile.registers[10]);
+        $display("x11 (addi neg imm, ADD/SUB disambig) = %0d (expect 2)",uut.u_core.u_regfile.registers[11]);
+        $display("x12 (andi) = %0d (expect 240)",uut.u_core.u_regfile.registers[12]);
+        $display("x13 (ori) = %0d (expect 240)",uut.u_core.u_regfile.registers[13]);
+        $display("x14 (xori) = %h (expect ffffff00)",uut.u_core.u_regfile.registers[14]);
+
+        //slti/sltiu disagreement + shifts
+        $display("x15 (slti) = %0d (expect 1, signed -1<1)",uut.u_core.u_regfile.registers[15]);
+        $display("x16 (sltiu) = %0d (expect 0, unsigned huge<1)",uut.u_core.u_regfile.registers[16]);
+        $display("x17 (slli) = %0d (expect 16)",uut.u_core.u_regfile.registers[17]);
+        $display("x18 (srli) = %h (expect 0fffffff)",uut.u_core.u_regfile.registers[18]);
+        $display("x19 (srai) = %0d (expect -1, i.e. 4294967295 unsigned)",uut.u_core.u_regfile.registers[19]);
+
+        // zero-result check
+        $display("x20 (andi to zero) = %0d (expect 0)",uut.u_core.u_regfile.registers[20]);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/soc/soc_jump_tb.v =====
+`timescale 1ns/1ps
+module soc_tb;
+    reg clk, rst;
+    integer i;
+
+    soc uut (.clk(clk),.rst(rst));
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("soc_tb.vcd");
+        $dumpvars(0,soc_tb);
+
+        rst = 1;
+        #10;
+        rst = 0;
+
+        for (i = 0; i < 30; i = i + 1)
+        begin
+            @(posedge clk);
+            #1;
+        end
+
+        // Test 1: JAL forward, link register + skip proof
+        $display("x5 (jal link, Test 1) = %h (expect 00000004)",uut.u_core.u_regfile.registers[5]);
+        $display("x30 (Test 1 landed not skipped) = %0d (expect 222)",uut.u_core.u_regfile.registers[30]);
+
+        // Test 2: JAL backward, negative immediate
+        $display("x31 (Test 2 backward jal) = %0d (expect 222)",uut.u_core.u_regfile.registers[31]);
+
+        // Test 3: JALR round trip, call via jal ra + return via jalr x0,0(ra)
+        $display("x1 (ra, Test 3 call link) = %h (expect 00000024)",uut.u_core.u_regfile.registers[1]);
+        $display("x22 (Test 3 inside function) = %0d (expect 333)",uut.u_core.u_regfile.registers[22]);
+        $display("x21 (Test 3 returned correctly) = %0d (expect 222)",uut.u_core.u_regfile.registers[21]);
+
+        // Test 4: JALR with nonzero positive immediate (rs1 + imm)
+        $display("x24 (Test 4 jalr rs1+imm) = %0d (expect 222)",uut.u_core.u_regfile.registers[24]);
+
+        // Test 5: JALR bit-0 clear, proven via a following jal's link register
+        $display("x26 (Test 5 bit0-clear proof) = %h (expect 00000054)",uut.u_core.u_regfile.registers[26]);
+
+        // Test 6: JALR with rd != x0, proves JALR's own link write
+        $display("x27 (Test 6 jalr own link) = %h (expect 00000058)",uut.u_core.u_regfile.registers[27]);
+        $display("x28 (Test 6 landed, rd!=x0) = %0d (expect 222)",uut.u_core.u_regfile.registers[28]);
+
+        // Test 7: JALR with negative immediate
+        $display("x29 (Test 7 jalr negative imm)  = %0d (expect 222)",uut.u_core.u_regfile.registers[29]);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/soc/soc_load_tb.v =====
+`timescale 1ns/1ps
+module soc_tb;
+    reg clk, rst;
+    integer i;
+
+    soc uut (.clk(clk),.rst(rst));
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("soc_tb.vcd");
+        $dumpvars(0,soc_tb);
+
+        // ram powers up uninitialized, zero it first
+        for (i = 0; i < 4096; i = i + 1)
+        begin
+            uut.u_mem_interface.ram.mem[i] = 8'h00;
+        end
+
+        // preload word 0 = 0xAABBCCDD, little-endian byte layout
+        uut.u_mem_interface.ram.mem[0] = 8'hDD;
+        uut.u_mem_interface.ram.mem[1] = 8'hCC;
+        uut.u_mem_interface.ram.mem[2] = 8'hBB;
+        uut.u_mem_interface.ram.mem[3] = 8'hAA;
+        // preload word 4 = 0x12345678, all bytes sign-bit 0 on purpose
+        uut.u_mem_interface.ram.mem[4] = 8'h78;
+        uut.u_mem_interface.ram.mem[5] = 8'h56;
+        uut.u_mem_interface.ram.mem[6] = 8'h34;
+        uut.u_mem_interface.ram.mem[7] = 8'h12;
+
+        rst = 1;
+        #10;
+        rst = 0;
+
+        for (i = 0; i < 12; i = i + 1)
+        begin
+            @(posedge clk);
+            #1;
+        end
+
+        // full word load
+        $display("x1 (lw) = %h (expect aabbccdd)",uut.u_core.u_regfile.registers[1]);
+
+        // byte loads, signed vs unsigned, word 0
+        $display("x2 (lb lane0) = %h (expect ffffffdd)",uut.u_core.u_regfile.registers[2]);
+        $display("x3 (lbu lane0) = %h (expect 000000dd)",uut.u_core.u_regfile.registers[3]);
+        $display("x4 (lb lane1) = %h (expect ffffffcc)",uut.u_core.u_regfile.registers[4]);
+
+        // half loads, both aligned offsets
+        $display("x5 (lh lanes01) = %h (expect ffffccdd)",uut.u_core.u_regfile.registers[5]);
+        $display("x6 (lhu lanes01) = %h (expect 0000ccdd)",uut.u_core.u_regfile.registers[6]);
+        $display("x7 (lh lanes23) = %h (expect ffffaabb)",uut.u_core.u_regfile.registers[7]);
+
+        // more byte loads
+        $display("x8 (lb lane3) = %h (expect ffffffaa)",uut.u_core.u_regfile.registers[8]);
+        $display("x9 (lbu lane3) = %h (expect 000000aa)",uut.u_core.u_regfile.registers[9]);
+
+        // word 4, all sign bits 0, lb/lbu must agree
+        $display("x12 (lw word4) = %h (expect 12345678)",uut.u_core.u_regfile.registers[12]);
+        $display("x10 (lb word4 lane0) = %h (expect 00000078)",uut.u_core.u_regfile.registers[10]);
+        $display("x11 (lbu word4 lane0) = %h (expect 00000078, matches x10)",uut.u_core.u_regfile.registers[11]);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/soc/soc_r_type_tb.v =====
+`timescale 1ns/1ps
+module soc_tb;
+    reg clk, rst;
+    integer i;
+
+    soc uut (.clk(clk),.rst(rst));
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("soc_tb.vcd");
+        $dumpvars(0,soc_tb);
+
+        rst = 1;
+        #10;
+        rst = 0;
+
+        for (i = 0; i < 15; i = i + 1) 
+        begin
+            @(posedge clk);
+            #1;
+        end
+
+        // basic R type instructions
+        $display("x3 (add) = %0d (expect 8)",uut.u_core.u_regfile.registers[3]);
+        $display("x4 (sub) = %0d (expect 2)",uut.u_core.u_regfile.registers[4]);
+        $display("x5 (and) = %0d (expect 1)",uut.u_core.u_regfile.registers[5]);
+        $display("x6 (or) = %0d (expect 7)",uut.u_core.u_regfile.registers[6]);
+        $display("x7 (xor) = %0d (expect 6)",uut.u_core.u_regfile.registers[7]);
+        $display("x8 (sll) = %0d (expect 96)",uut.u_core.u_regfile.registers[8]);
+        $display("x9 (srl) = %0d (expect 12)",uut.u_core.u_regfile.registers[9]);
+
+        // checking the disagreements and the edge cases (VERY IMPORTANT)
+        $display("x14 (sra) = %0d (expect -1,i.e. 4294967295 unsigned)",uut.u_core.u_regfile.registers[14]);
+        $display("x12 (slt) = %0d (expect 1, signed -1<1)",uut.u_core.u_regfile.registers[12]);
+        $display("x13 (sltu) = %0d (expect 0, unsigned huge<1)",uut.u_core.u_regfile.registers[13]);
+        $display("x15 (sub to zero) = %0d (expect 0)",uut.u_core.u_regfile.registers[15]);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/soc/soc_store_tb.v =====
+`timescale 1ns/1ps
+module soc_tb;
+    reg clk, rst;
+    integer i;
+
+    soc uut (.clk(clk),.rst(rst));
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("soc_tb.vcd");
+        $dumpvars(0,soc_tb);
+
+        // ram powers up uninitialized, zero it first
+        for (i = 0; i < 4096; i = i + 1)
+        begin
+            uut.u_mem_interface.ram.mem[i] = 8'h00;
+        end
+
+        rst = 1;
+        #10;
+        rst = 0;
+
+        for (i = 0; i < 28; i = i + 1)
+        begin
+            @(posedge clk);
+            #1;
+        end
+
+        // sb: checking is seam 1b works, all 4 lanes --> baseline FFFFFFFF, test to overwrite one lane with 0xAB
+        $display("x10 (sb lane0) = %h (expect ffffffab)",uut.u_core.u_regfile.registers[10]);
+        $display("x11 (sb lane1) = %h (expect ffffabff)",uut.u_core.u_regfile.registers[11]);
+        $display("x12 (sb lane2) = %h (expect ffabffff)",uut.u_core.u_regfile.registers[12]);
+        $display("x13 (sb lane3) = %h (expect abffffff)",uut.u_core.u_regfile.registers[13]);
+
+        // sh: using baseline --> FFFFFFFF, overwrite each half with 0x0300
+        $display("x14 (sh lanes01) = %h (expect ffff0300)",uut.u_core.u_regfile.registers[14]);
+        $display("x15 (sh lanes23) = %h (expect 0300ffff)",uut.u_core.u_regfile.registers[15]);
+
+        // sw: had to make sw works with a random word being abcd0123
+        $display("x16 (sw distinct value) = %h (expect abcd0123)",uut.u_core.u_regfile.registers[16]);
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/soc/soc_tb.v =====
+`timescale 1ns/1ps
+module soc_tb;
+
+    reg clk, rst;
+    soc uut(.clk(clk),.rst(rst));
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("soc_tb.vcd");
+        $dumpvars(0,soc_tb);
+
+        rst = 1;
+        #10;
+        rst = 0;
+
+        @(posedge clk);
+        #1;
+        $display("x1 = %0d (expect 5)",uut.u_core.u_regfile.registers[1]); // addressing the register 1 --> registers --> regfile --> core --> soc
+
+        $finish;
+    end
+
+endmodule
+// ===== tb/soc/soc_upper_tb.v =====
+`timescale 1ns/1ps
+module soc_tb;
+    reg clk, rst;
+    integer i;
+
+    soc uut (.clk(clk),.rst(rst));
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("soc_tb.vcd");
+        $dumpvars(0,soc_tb);
+
+        rst = 1;
+        #10;
+        rst = 0;
+
+        for (i = 0; i < 6; i = i + 1)
+        begin
+            @(posedge clk);
+            #1;
+        end
+
+        // LUI testing
+        $display("x5 (lui basic) = %h (expect abcde000)",uut.u_core.u_regfile.registers[5]);
+        $display("x6 (lui all-ones upper) = %h (expect fffff000)",uut.u_core.u_regfile.registers[6]);
+        $display("x7 (lui zero) = %h (expect 00000000)",uut.u_core.u_regfile.registers[7]);
+
+        // AUIPC testing
+        $display("x8 (auipc basic) = %h (expect 0000100c)",uut.u_core.u_regfile.registers[8]);
+        $display("x9 (auipc + addi composed) = %h (expect 00002133)",uut.u_core.u_regfile.registers[9]);
+
+        $finish;
+    end
+
+endmodule

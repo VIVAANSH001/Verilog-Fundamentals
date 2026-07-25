@@ -160,3 +160,40 @@ converting the single cycle rv32i core into a 5 stage pipeline (if/id/ex/mem/wb)
 - programs/ex_stage_test.hex
 - tb/core/core_pipelined_ex_tb.v
 - core.v and soc.v still untouched, phase 3 still fully intact and runnable standalone
+
+## DAY 55: MEM and WB Stages
+
+### what was covered
+- wired the last two stages into core_pipelined.v, MEM finally drives mem_interface.v for real and WB closes the loop back into regfile
+- MEM stage duplicates 3 chunks of glue logic straight out of core.v (byte_en gen, store data positioning, load sign/zero extend), just reading off ex_mem_reg's latched outputs instead of live combinational signals
+- mem_interface.v itself is completely untouched
+- regfile's write port is finally live, we/write_addr/write_data all driven off mem_wb_reg now.
+- also reorganized programs/ into handcoded/, encoder/, generated/ subfolders since the python generator scripts are a genuinely different kind of file from hand written hex and it was getting messy having them all loose in one folder
+
+### core_pipelined.v additions
+- byte_en generator + store data positioning, same case statements as core.v's seam 1/1b, keyed off ex_mem_alu_result_out and ex_mem_mem_size_out instead of live alu_result
+- mem_addr/mem_write/mem_read assigned straight off ex_mem_reg outputs, mem_wdata/mem_byte_en off the duplicated logic above
+- load sign/zero extend, same seam 2 logic as core.v, reading mem_rdata combinationally same cycle
+- mem_wb_reg.v wired up, carries alu_result/load_data/pc/imm/rd/reg_write/result_src into wb
+- wb mux, same 4 way result_src priority as core.v's writeback mux (alu_result/load_data/pc+4/imm passthrough)
+- regfile write port finally connected
+
+### bugs hit
+- naming collision: gave the new mem stage output ports the same names (mem_read, mem_write) as wires already declared inside the id stage for control_unit's outputs. iverilog caught it immediately (already declared in this scope), fix was renaming the id stage internal wires to id_mem_read/id_mem_write and leaving the actual output ports alone
+- first real test run showed x5 (lw result) coming back as x instead of 13. not a bug in the mem/wb logic itself, its a genuine raw data hazard: the sw/lw instructions were reading x3 in ID before the instruction that wrote x3 had reached wb yet, since theres no forwarding built (thats week 9). fixed for today by spacing the test program out with nops so nothing reads a register within 4 instructions of it being written, which is obviously not a real fix just a way to prove the wb path itself works in isolation before hazards get handled properly
+
+### testing
+- new testbench core_pipelined_mem_wb_tb.v, first one wiring core_pipelined + instr_mem + mem_interface directly together, needed the real memory interface in the loop this time since single cycle style stub testing wouldnt prove mem_interface.v actually still works untouched
+- new program mem_wb_test.hex generated through gen_mem_wb_test.py, spaced with nops around the x3 dependency to dodge the hazard for now
+- preloaded x1=77 x2=13 into regfile same as previous days
+- checked all 4 writeback mux paths get proven: add (alu_result), lw (load_data), sb+lb (byte lane load_data), jal (pc+4)
+- 6 checks total, all matched predicted values after the hazard workaround, compiled and ran clean
+
+### what got built
+- rtl/core/core_pipelined.v (MEM + WB stages added, regfile write port live for the first time)
+- programs/encoder/gen_mem_wb_test.py
+- programs/generated/mem_wb_test.hex
+- tb/core/core_pipelined_mem_wb_tb.v
+- programs/ reorganized into handcoded/, encoder/, generated/ subfolders
+- core.v and soc.v still untouched, phase 3 still fully intact and runnable standalone
+- pipeline now runs fetch through writeback end to end for the first time, just without hazard handling yet, thats week 9
