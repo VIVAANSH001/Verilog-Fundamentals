@@ -10,7 +10,7 @@ module instr_mem (input [31:0] pc_current,output [31:0] instruction);
     reg [31:0] mem [0:1023];
 
     initial begin
-        $readmemh("programs/generated/mem_wb_test.hex", mem);
+        $readmemh("programs/generated/hazard_test.hex", mem);
     end
 
     // gets the instruction by slicing the last 2 bits.
