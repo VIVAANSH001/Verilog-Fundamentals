@@ -27,12 +27,11 @@ program = [
     i_type(0, 0, 0x0, 0, OP_ITYPE),     # nop
     i_type(0, 0, 0x0, 0, OP_ITYPE),     # nop
     i_type(0, 0, 0x0, 0, OP_ITYPE),     # nop
-    r_type(0, 2, 1, 0x0, 3, OP_RTYPE),  # add x3, x1, x2 producer, x3=8, now safely spaced
-    i_type(1, 3, 0x0, 4, OP_ITYPE),     # addi x4, x3, 1 gap=1, expect FAIL (real answer 9)
-    r_type(0, 3, 3, 0x0, 5, OP_RTYPE),  # add x5, x3, x3 gap=2, expect FAIL (real answer 16)
-    r_type(0, 3, 3, 0x0, 6, OP_RTYPE),  # add x6, x3, x3 gap=3, borderline (real answer 16)
-    r_type(0, 3, 3, 0x0, 7, OP_RTYPE),]  # add x7, x3, x3 gap=4, expect PASS (real answer 16)
-
+    r_type(0, 2, 1, 0x0, 3, OP_RTYPE),  # add x3, x1, x2 producer
+    i_type(1, 3, 0x0, 4, OP_ITYPE),     # addi x4, x3, 1 gap=1
+    r_type(0, 3, 3, 0x0, 5, OP_RTYPE),  # add x5, x3, x3 gap=2
+    r_type(0, 3, 3, 0x0, 6, OP_RTYPE),  # add x6, x3, x3 gap=3
+    r_type(0, 3, 3, 0x0, 7, OP_RTYPE),]  # add x7, x3, x3 gap=4
 
 with open("programs/generated/hazard_test.hex", "w") as f:
     for instr in program:

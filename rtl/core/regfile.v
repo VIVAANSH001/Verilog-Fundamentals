@@ -14,7 +14,8 @@ module regfile (input clk,input we,input [4:0] write_addr,input [31:0] write_dat
         end
     end
     // read is async to allow single cycle
-    assign read_data1 = (read_addr1 == 5'b00000) ? 32'b0 : registers[read_addr1];
-    assign read_data2 = (read_addr2 == 5'b00000) ? 32'b0 : registers[read_addr2];
+    // Day 58 addition: same-cycle write-through.
+    assign read_data1 = (read_addr1 == 5'b00000) ? 32'b0 : (we && write_addr == read_addr1) ? write_data : registers[read_addr1];
+    assign read_data2 = (read_addr2 == 5'b00000) ? 32'b0 : (we && write_addr == read_addr2) ? write_data : registers[read_addr2];
 
 endmodule

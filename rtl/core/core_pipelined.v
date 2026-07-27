@@ -140,8 +140,11 @@ module core_pipelined (
     wire [3:0] ex_alu_ctrl;
     alu_control u_alu_control (.alu_op(id_ex_alu_op_out),.funct3(id_ex_funct3_out),.funct7(id_ex_funct7_out),.alu_src(id_ex_alu_src_out),.alu_ctrl(ex_alu_ctrl));
 
-    wire [31:0] ex_alu_a = id_ex_alu_a_pc_out ? id_ex_pc_out : id_ex_rs1_data_out;
-    wire [31:0] ex_alu_b = id_ex_alu_src_out ? id_ex_imm_out : id_ex_rs2_data_out;
+    wire [31:0] alu_a_forwarded = (forward_a == 2'b01) ? ex_mem_alu_result_out : (forward_a == 2'b10) ? write_back_data : id_ex_rs1_data_out;
+    wire [31:0] alu_b_forwarded = (forward_b == 2'b01) ? ex_mem_alu_result_out : (forward_b == 2'b10) ? write_back_data : id_ex_rs2_data_out;
+
+    wire [31:0] ex_alu_a = id_ex_alu_a_pc_out ? id_ex_pc_out : alu_a_forwarded;
+    wire [31:0] ex_alu_b = id_ex_alu_src_out ? id_ex_imm_out : alu_b_forwarded;
 
     wire [31:0] ex_alu_result;
     wire ex_alu_zero;
@@ -333,5 +336,17 @@ module core_pipelined (
         endcase
     end
     assign write_back_data_out = write_back_data;
+
+    // Day 58: forwarding unit
+    wire [1:0] forward_a, forward_b;
+    forwarding_unit u_forwarding (
+        .id_ex_rs1(id_ex_rs1_out),
+        .id_ex_rs2(id_ex_rs2_out),
+        .ex_mem_rd(ex_mem_rd_out),
+        .ex_mem_reg_write(ex_mem_reg_write_out),
+        .mem_wb_rd(mem_wb_rd_out),
+        .mem_wb_reg_write(mem_wb_reg_write_out),
+        .forward_a(forward_a),
+        .forward_b(forward_b));
 
 endmodule
