@@ -47,7 +47,7 @@ module core_pipelined_forwarding_tb;
         rst = 0;
 
         // 18 instructions + pipeline fill/drain, giving generous headroom
-        for (i = 0; i < 25; i = i + 1)
+        for (i = 0; i < 30; i = i + 1)
         begin
             @(posedge clk);
             #1;
@@ -73,7 +73,7 @@ module core_pipelined_forwarding_tb;
         $display("Section D: deliberate load-use failure (Day 60 territory)");
         $display("x16 (base addr) = %0d (expect 0)",uut.u_regfile.registers[16]);
         $display("x17 (lw result) = %0d (expect 50)",uut.u_regfile.registers[17]);
-        $display("x18 add x17+x2 = %0d (real answer 53, EXPECTED WRONG --> confirmed gap, forwards address not loaded data, fix is Day 60)",uut.u_regfile.registers[18]);
+        $display("x18 add x17+x2 = %0d (expect 53 now that stall logic is in, was 3 on Day 59)",uut.u_regfile.registers[18]);
 
         $finish;
     end

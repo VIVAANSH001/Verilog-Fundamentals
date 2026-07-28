@@ -41,9 +41,10 @@ program = [
     r_type(0, 2, 13, 0x0, 14, OP_RTYPE), # add x14, x13, x2 = 1002 if EX/MEM wins (correct), 53 if bug
 
     # Section D: deliberate load-use failure, flagged for Day 60
+    # Should work today in day 60 after load-use hazard detection
     i_type(0, 0, 0x0, 16, OP_ITYPE), # addi x16, x0, 0
     i_type(0, 16, 0x2, 17, OP_LOAD), # lw x17, 0(x16)
-    r_type(0, 2, 17, 0x0, 18, OP_RTYPE), # add x18, x17, x2 --> EXPECTED WRONG
+    r_type(0, 2, 17, 0x0, 18, OP_RTYPE), # add x18, x17, x2
 ]
 
 with open("programs/generated/forwarding_chain_test.hex", "w") as f:

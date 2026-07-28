@@ -2,9 +2,14 @@
 // Pipeline register between ID and EX stages.
 // Carries decoded operands, immediate, register addresses, every control signal control_unit.v produces,
 // since downstream stages (EX/MEM/WB) each still need a subset of them.
+//
+// Day 60 addition: `flush` input. When high (load-use hazard detected),
+// this register's outputs are forced to the same all-zero bubble state as
+// reset on the next edge, regardless of what's on the _in ports.
 module id_ex_reg (
     input wire clk,
     input wire rst,
+    input wire flush,
     input wire [31:0] pc_in,
     input wire [31:0] rs1_data_in,
     input wire [31:0] rs2_data_in,
@@ -48,7 +53,7 @@ module id_ex_reg (
 
     always @(posedge clk) 
     begin
-        if (rst) 
+        if (rst || flush) 
         begin
             pc_out <= 32'b0;
             rs1_data_out <= 32'b0;

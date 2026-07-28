@@ -3,6 +3,13 @@
 // pc.v feeding if_id_reg.v. core.v (Phase 3, single-cycle) is untouched
 // and stays runnable as the reference to differentiate against once hazards show
 // up in week 9.
+//
+// Day 60: load-use hazard detection + stall logic added on top of Day 58's
+// forwarding. hazard_detect.v compares the load currently in EX
+// (id_ex_mem_read_out / id_ex_rd_out) against the instruction currently in
+// ID (rs1/rs2, decoded from if_id_instr_out, not yet latched into ID/EX).
+// On a hit: pc.v and if_id_reg.v freeze (stall), and id_ex_reg.v is flushed
+// to a bubble on the next edge so nothing incorrect enters EX.
 module core_pipelined (
     input wire clk,
     input wire rst,
@@ -44,11 +51,12 @@ module core_pipelined (
     output wire [4:0] mem_wb_rd_out,
     output wire mem_wb_reg_write_out,
     output wire [1:0] mem_wb_result_src_out,
-    output wire [31:0] write_back_data_out);
+    output wire [31:0] write_back_data_out,
+    output wire stall_out);
 
     // IF stage
     reg [31:0] pc_next;
-    pc u_pc (.clk(clk), .rst(rst), .pc_next(pc_next), .pc_current(pc_current));
+    pc u_pc (.clk(clk), .rst(rst), .stall(stall), .pc_next(pc_next), .pc_current(pc_current));
 
     always @(*)
     begin
@@ -59,6 +67,7 @@ module core_pipelined (
     if_id_reg u_if_id (
         .clk(clk),
         .rst(rst),
+        .stall(stall),
         .instr_in(instruction),
         .pc_in(pc_current),
         .instr_out(if_id_instr_out),
@@ -81,6 +90,15 @@ module core_pipelined (
     wire [31:0] rs1_data, rs2_data;
     regfile u_regfile (.clk(clk),.we(mem_wb_reg_write_out),.write_addr(mem_wb_rd_out),.write_data(write_back_data),.read_addr1(rs1),.read_addr2(rs2),.read_data1(rs1_data),.read_data2(rs2_data));
 
+    wire stall;
+    hazard_detect u_hazard_detect (
+        .id_ex_mem_read(id_ex_mem_read_out),
+        .id_ex_rd(id_ex_rd_out),
+        .if_id_rs1(rs1),
+        .if_id_rs2(rs2),
+        .stall(stall));
+    assign stall_out = stall;
+
     wire [31:0] id_ex_pc_out;
     wire [4:0] id_ex_rs1_out, id_ex_rs2_out;
     wire [2:0] id_ex_funct3_out;
@@ -95,6 +113,7 @@ module core_pipelined (
     id_ex_reg u_id_ex (
         .clk(clk),
         .rst(rst),
+        .flush(stall),
         .pc_in(if_id_pc_out),
         .rs1_data_in(rs1_data),
         .rs2_data_in(rs2_data),

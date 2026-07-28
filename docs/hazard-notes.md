@@ -91,3 +91,38 @@ separate log from pipeline-notes.md cause phase 4's structural pipeline build (d
 - tb/core/core_pipelined_forwarding_tb.v
 - instr_mem.v repointed to forwarding_chain_test.hex via the readmemh path
 - day 58's forwarding_unit.v and regfile.v write-through, both untouched, this was purely a testing day proving what already got built actually holds up under real dependent sequences
+
+## DAY 60: Load-Use Hazard Detection + Stall Logic
+
+### what was covered
+- day 59 closed out with section D of forwarding_chain_test.hex confirmed broken on purpose, x18 = 3 instead of 53. today's job was actually fixing that, not just documenting it
+- forwarding cant solve this one no matter how its wired. ex_mem_alu_result_out only ever holds what EX computed, and for a load that's just the address (rs1+imm), not the loaded data. the real value doesnt exist until MEM runs, which is one cycle after a gap=1 consumer would need it forwarded. no forwarding path fixes a value that doesnt exist yet, so the only real fix is stalling the consumer for one cycle so the load has time to reach MEM first
+- this is a genuinely different comparison window than forwarding_unit.v. forwarding looks backward, EX's current operands vs EX/MEM and MEM/WB. hazard detection looks the opposite direction, the load thats currently in EX (id_ex_mem_read_out / id_ex_rd_out) vs the instruction thats currently in ID, still sitting as raw rs1/rs2 off if_id_instr_out, not even latched into ID/EX yet
+
+### the fix
+- new module: rtl/core/hazard_detect.v, pure combinational, single stall output. condition is id_ex_mem_read && (id_ex_rd != 0) && (id_ex_rd == if_id_rs1 || id_ex_rd == if_id_rs2). same rd != x0 guard as the forwarding unit, for the same reason, x0 matching is meaningless
+- one stall signal drives three separate things, all in core_pipelined.v:
+  - pc.v gets a new stall input, holds pc_current instead of advancing to pc_next
+  - if_id_reg.v gets a new stall input, holds instr_out/pc_out instead of latching the next fetched instruction, so the consumer just sits there and gets re-decoded next cycle
+  - id_ex_reg.v gets a new flush input, ORed into the same reset condition, so on the stall cycle the consumer gets squashed into a bubble (all-zero control signals) instead of actually entering EX with its now-stale operands
+- freezing PC+IF/ID and bubbling ID/EX at the same time is the actual mechanism, PC/IF-ID hold the instruction in place for one cycle while ID/EX makes sure nothing wrong executes in the meantime
+
+### bugs hit
+- none in the RTL logic itself, first compile and first run came back correct
+- non-RTL thing worth logging anyway: reran core_pipelined_forwarding_tb.v unmodified like the plan says to, but the old wait loop (25 cycles from day 59) wasnt enough headroom anymore, since the stall adds a bubble cycle the pipeline needs extra time to drain before section D's regfile reads are valid. bumped it to 30. good reminder that adding a stall changes total cycle count for every test downstream of it, not just the one that triggered it
+- section D's $display string was still written like the bug was expected, said "EXPECTED WRONG" even after the fix landed and the value came back correct. not an RTL bug but a stale comment/message that couldve been confusing to reread later, fixed the wording to match reality
+
+### results
+- x16 (base addr) = 0, correct
+- x17 (lw result) = 50, correct
+- x18 add x17+x2 = 53, correct, flipped from day 59's confirmed-wrong 3. this is the actual proof the stall works
+- sections A, B, C (forward_a chaining, forward_a+forward_b simultaneous, EX/MEM vs MEM/WB tie break) all still came back correct on the same rerun, so the stall logic sitting on top of forwarding doesnt break anything forwarding was already handling
+
+### what got built
+- rtl/core/hazard_detect.v
+- pc.v: stall input added
+- if_id_reg.v: stall input added
+- id_ex_reg.v: flush input added, ORed into the reset condition
+- core_pipelined.v: hazard_detect instance wired in, stall/flush fanned out to pc.v, if_id_reg.v, id_ex_reg.v
+- tb/core/core_pipelined_forwarding_tb.v: wait loop bumped 25 to 30, section D display text updated to match the fix
+- day 61 per the plan is dedicated load-use scenario testing, this single lw-then-add case proved the mechanism works but hasnt been stress tested yet the way day 59 stress tested forwarding
