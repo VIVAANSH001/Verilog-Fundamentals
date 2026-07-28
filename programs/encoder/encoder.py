@@ -19,22 +19,35 @@ def j_type(imm, rd, opcode):
     return (imm20 << 31)|(imm19_12 << 12)|(imm11 << 20)|(imm10_1 << 21)|(rd << 7)|opcode
 
 
-OP_ITYPE, OP_RTYPE = 0x13, 0x33
+OP_ITYPE, OP_RTYPE, OP_LOAD = 0x13, 0x33, 0x03
 
 program = [
-    i_type(5, 0, 0x0, 1, OP_ITYPE),     # addi x1, x0, 5
-    i_type(3, 0, 0x0, 2, OP_ITYPE),     # addi x2, x0, 3
-    i_type(0, 0, 0x0, 0, OP_ITYPE),     # nop
-    i_type(0, 0, 0x0, 0, OP_ITYPE),     # nop
-    i_type(0, 0, 0x0, 0, OP_ITYPE),     # nop
-    r_type(0, 2, 1, 0x0, 3, OP_RTYPE),  # add x3, x1, x2 producer
-    i_type(1, 3, 0x0, 4, OP_ITYPE),     # addi x4, x3, 1 gap=1
-    r_type(0, 3, 3, 0x0, 5, OP_RTYPE),  # add x5, x3, x3 gap=2
-    r_type(0, 3, 3, 0x0, 6, OP_RTYPE),  # add x6, x3, x3 gap=3
-    r_type(0, 3, 3, 0x0, 7, OP_RTYPE),]  # add x7, x3, x3 gap=4
+    # Section A: continuous forward_a chain, gap=1 every cycle
+    i_type(5, 0, 0x0, 1, OP_ITYPE), # addi x1, x0, 5
+    i_type(3, 0, 0x0, 2, OP_ITYPE), # addi x2, x0, 3
+    r_type(0, 2, 1, 0x0, 3, OP_RTYPE), # add  x3, x1, x2 = 8
+    r_type(0, 2, 3, 0x0, 4, OP_RTYPE), # add  x4, x3, x2 = 11, forward_a EX/MEM
+    r_type(0, 2, 4, 0x0, 5, OP_RTYPE), # add  x5, x4, x2 = 14, forward_a EX/MEM
+    r_type(0, 2, 5, 0x0, 6, OP_RTYPE), # add  x6, x5, x2 = 17, forward_a EX/MEM, thus repeated forward_a
 
-with open("programs/generated/hazard_test.hex", "w") as f:
+    # Section B: forward_a and forward_b simultaneously, different distances
+    i_type(100, 0, 0x0, 10, OP_ITYPE), # addi x10, x0, 100
+    i_type(200, 0, 0x0, 11, OP_ITYPE), # addi x11, x0, 200
+    r_type(0, 11, 10, 0x0, 12, OP_RTYPE), # add  x12, x10, x11 = 300, forward_a MEM/WB, forward_b EX/MEM
+
+    # Section C: EX/MEM vs MEM/WB tie-break, same destination reg
+    i_type(50, 0, 0x0, 13, OP_ITYPE), # addi x13, x0, 50 (D)
+    i_type(999, 0, 0x0, 13, OP_ITYPE), # addi x13, x0, 999 (E)
+    r_type(0, 2, 13, 0x0, 14, OP_RTYPE), # add x14, x13, x2 = 1002 if EX/MEM wins (correct), 53 if bug
+
+    # Section D: deliberate load-use failure, flagged for Day 60
+    i_type(0, 0, 0x0, 16, OP_ITYPE), # addi x16, x0, 0
+    i_type(0, 16, 0x2, 17, OP_LOAD), # lw x17, 0(x16)
+    r_type(0, 2, 17, 0x0, 18, OP_RTYPE), # add x18, x17, x2 --> EXPECTED WRONG
+]
+
+with open("programs/generated/forwarding_chain_test.hex", "w") as f:
     for instr in program:
         f.write(f"{instr:08x}\n")
 
-print(f"wrote {len(program)} instructions to hazard_test.hex")
+print(f"wrote {len(program)} instructions to forwarding_chain_test.hex")

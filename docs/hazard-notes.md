@@ -62,3 +62,32 @@ separate log from pipeline-notes.md cause phase 4's structural pipeline build (d
 - regfile.v: same-cycle write-through added to read_data1/read_data2
 - tb/core/regfile_writethrough_tb.v, isolates the write-through fix specifically, reuses hazard_test.hex same as day 57's tb
 - day 57's hazard_test.hex and core_pipelined_hazard_tb.v reused completely unmodified across both fixes, exactly as planned
+
+## DAY 59: Test Forwarding With Dependent Sequences
+
+### what was covered
+- day 58 built forwarding and fixed the regfile write-through bug, today's job is just to actually stress test it properly instead of trusting the single hazard_test.hex chain from day 57
+- hazard_test.hex only ever proved forward_a, off one producer feeding four isolated consumers at different gaps. never proved: a real back to back chain where forward_a has to flip correctly every single cycle, forward_a and forward_b firing together in the same instruction, or the EX/MEM vs MEM/WB tie break actually picking the right one when both could match at once
+- wrote one new hex, forwarding_chain_test.hex, covering all of that plus a deliberate load-use case, in 4 sections
+
+### the test program
+- section A: 3 back to back add's off a single chain (x3 --> x4 --> x5 --> x6), every single one is gap=1 off the one before it, forces forward_a to flip to a different register every cycle instead of just proving it once
+- section B: two independent producers (x10, x11) feeding one consumer that needs both operands forwarded at the same time, from two different distances, x10 is gap=2 (MEM/WB) and x11 is gap=1 (EX/MEM), so forward_a and forward_b are both active on the same instruction from different sources
+- section C: two writes to the same register back to back (x13 = 50, then x13 = 999) immediately followed by a consumer. this forces ex_mem_rd and mem_wb_rd to both match x13 at the same time, real tie between the two forwarding sources, not just theoretical
+- section D: lw x17 immediately followed by add x18, x17, x2. deliberately not spaced, this is the confirmed load-use gap from day 58's writeup, put in on purpose to document the failure rather than dodge it
+
+### bugs hit
+- none in the RTL, everything passed on the first real run. only issue was that I forgot to repoint instr_mem.v's $readmemh path after generating the new hex.
+
+### results
+- section A: x4=11, x5=14, x6=17, all correct, forward_a held up across 3 consecutive gap=1 dependencies in a row
+- section B: x12=300, correct, forward_a (MEM/WB) and forward_b (EX/MEM) both fired correctly in the same instruction from two different pipeline stages
+- section C: x14=1002, correct. this is the important one, if the ex/mem-first priority in the forwarding unit was ever wrong or got flipped, this would've silently come back as 53 instead. real proof the tie break works, not just a formality
+- section D: x18=3, exactly as predicted going in. real answer shouldve been 53 (50 loaded + 3), got 3 instead cause forwarding grabbed the address computed in EX (0) instead of the actual loaded value, which doesnt exist yet at that point since MEM hasnt run for that instruction. this is the confirmed, reproducible load-use hazard, not a new bug, just documented now instead of accidentally tripped over later. exactly what day 60 exists to fix
+
+### what got built
+- programs/encoder/encoder.py: added new program list for forwarding_chain_test.hex, same i_type/r_type helper functions reused unmodified
+- programs/generated/forwarding_chain_test.hex
+- tb/core/core_pipelined_forwarding_tb.v
+- instr_mem.v repointed to forwarding_chain_test.hex via the readmemh path
+- day 58's forwarding_unit.v and regfile.v write-through, both untouched, this was purely a testing day proving what already got built actually holds up under real dependent sequences
