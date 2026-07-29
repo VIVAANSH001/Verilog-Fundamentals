@@ -21,34 +21,38 @@ def j_type(imm, rd, opcode):
 
 OP_ITYPE, OP_RTYPE, OP_LOAD = 0x13, 0x33, 0x03
 
+def b_type(imm, rs2, rs1, funct3, opcode):
+    imm12 = (imm >> 12) & 0x1
+    imm10_5 = (imm >> 5) & 0x3f
+    imm4_1 = (imm >> 1) & 0xf
+    imm11 = (imm >> 11) & 0x1
+    return (imm12 << 31)|(imm10_5 << 25)|(rs2 << 20)|(rs1 << 15)|(funct3 << 12)|(imm4_1 << 8)|(imm11 << 7)|opcode
+
+OP_BRANCH = 0x63
+
 program = [
-    # Section A: continuous forward_a chain, gap=1 every cycle
-    i_type(5, 0, 0x0, 1, OP_ITYPE), # addi x1, x0, 5
+    i_type(0, 0, 0x0, 1, OP_ITYPE), # addi x1, x0, 0 (base addr)
+    i_type(0, 1, 0x2, 5, OP_LOAD), # lw x5, 0(x1) = 20
     i_type(3, 0, 0x0, 2, OP_ITYPE), # addi x2, x0, 3
-    r_type(0, 2, 1, 0x0, 3, OP_RTYPE), # add  x3, x1, x2 = 8
-    r_type(0, 2, 3, 0x0, 4, OP_RTYPE), # add  x4, x3, x2 = 11, forward_a EX/MEM
-    r_type(0, 2, 4, 0x0, 5, OP_RTYPE), # add  x5, x4, x2 = 14, forward_a EX/MEM
-    r_type(0, 2, 5, 0x0, 6, OP_RTYPE), # add  x6, x5, x2 = 17, forward_a EX/MEM, thus repeated forward_a
-
-    # Section B: forward_a and forward_b simultaneously, different distances
-    i_type(100, 0, 0x0, 10, OP_ITYPE), # addi x10, x0, 100
-    i_type(200, 0, 0x0, 11, OP_ITYPE), # addi x11, x0, 200
-    r_type(0, 11, 10, 0x0, 12, OP_RTYPE), # add  x12, x10, x11 = 300, forward_a MEM/WB, forward_b EX/MEM
-
-    # Section C: EX/MEM vs MEM/WB tie-break, same destination reg
-    i_type(50, 0, 0x0, 13, OP_ITYPE), # addi x13, x0, 50 (D)
-    i_type(999, 0, 0x0, 13, OP_ITYPE), # addi x13, x0, 999 (E)
-    r_type(0, 2, 13, 0x0, 14, OP_RTYPE), # add x14, x13, x2 = 1002 if EX/MEM wins (correct), 53 if bug
-
-    # Section D: deliberate load-use failure, flagged for Day 60
-    # Should work today in day 60 after load-use hazard detection
-    i_type(0, 0, 0x0, 16, OP_ITYPE), # addi x16, x0, 0
-    i_type(0, 16, 0x2, 17, OP_LOAD), # lw x17, 0(x16)
-    r_type(0, 2, 17, 0x0, 18, OP_RTYPE), # add x18, x17, x2
+    r_type(0, 5, 2, 0x0, 7, OP_RTYPE), # add x7, x2, x5 stall, gap=0, load on rs2
+    i_type(4, 1, 0x2, 8, OP_LOAD), # lw x8, 4(x1) = 7
+    r_type(0, 8, 8, 0x0, 9, OP_RTYPE), # add x9, x8, x8  stall, load on both operands
+    i_type(8, 1, 0x2, 10, OP_LOAD), # lw x10, 8(x1) = 24
+    i_type(0, 10, 0x2, 11, OP_LOAD), # lw x11, 0(x10) stall, chained address dependency
+    i_type(12, 1, 0x2, 12, OP_LOAD), # lw x12, 12(x1) = 99
+    i_type(5, 0, 0x0, 13, OP_ITYPE), # addi x13, x0, 5 filler, no dependency
+    r_type(0, 13, 12, 0x0, 14, OP_RTYPE), # add x14, x12, x13 no stall expected, gap=1
+    i_type(42, 0, 0x0, 24, OP_ITYPE), # addi x24, x0, 42
+    i_type(16, 1, 0x2, 15, OP_LOAD), # lw x15, 16(x1) = 42
+    b_type(8, 24, 15, 0x0, OP_BRANCH), # beq x15, x24, 8 stall, load feeds branch rs1
+    i_type(24, 1, 0x2, 20, OP_LOAD), # lw x20, 24(x1) = 77
+    r_type(0, 2, 20, 0x0, 21, OP_RTYPE), # add x21, x20, x2 stall (hazard A)
+    i_type(4, 1, 0x2, 22, OP_LOAD), # lw x22, 4(x1) = 7
+    r_type(0, 2, 22, 0x0, 23, OP_RTYPE), # add x23, x22, x2 stall (hazard B)
 ]
 
-with open("programs/generated/forwarding_chain_test.hex", "w") as f:
+with open("programs/generated/hazard_scenarios_test.hex", "w") as f:
     for instr in program:
         f.write(f"{instr:08x}\n")
 
-print(f"wrote {len(program)} instructions to forwarding_chain_test.hex")
+print(f"wrote {len(program)} instructions to hazard_scenarios_test.hex")

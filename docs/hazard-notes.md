@@ -109,7 +109,7 @@ separate log from pipeline-notes.md cause phase 4's structural pipeline build (d
 
 ### bugs hit
 - none in the RTL logic itself, first compile and first run came back correct
-- non-RTL thing worth logging anyway: reran core_pipelined_forwarding_tb.v unmodified like the plan says to, but the old wait loop (25 cycles from day 59) wasnt enough headroom anymore, since the stall adds a bubble cycle the pipeline needs extra time to drain before section D's regfile reads are valid. bumped it to 30. good reminder that adding a stall changes total cycle count for every test downstream of it, not just the one that triggered it
+- non-RTL thing worth logging anyway: reran core_pipelined_forwarding_tb.v unmodified like the plan says to, but the old wait loop (25 cycles from day 59) wasnt enough headroom anymore, since the stall adds a bubble cycle the pipeline needs extra time to drain before section D's regfile reads are valid. bumped it to 30.
 - section D's $display string was still written like the bug was expected, said "EXPECTED WRONG" even after the fix landed and the value came back correct. not an RTL bug but a stale comment/message that couldve been confusing to reread later, fixed the wording to match reality
 
 ### results
@@ -126,3 +126,26 @@ separate log from pipeline-notes.md cause phase 4's structural pipeline build (d
 - core_pipelined.v: hazard_detect instance wired in, stall/flush fanned out to pc.v, if_id_reg.v, id_ex_reg.v
 - tb/core/core_pipelined_forwarding_tb.v: wait loop bumped 25 to 30, section D display text updated to match the fix
 - day 61 per the plan is dedicated load-use scenario testing, this single lw-then-add case proved the mechanism works but hasnt been stress tested yet the way day 59 stress tested forwarding
+
+## DAY 61: Test Load-Use Hazard Scenarios
+
+### what was covered
+- day 60 I built the stall fix and proved it works on exactly one case, lw immediately followed by an add using the loaded value. today's job was stress testing it the way day 59 stress tested forwarding, one lw-then-add case isnt the same as proving the mechanism generally
+- wrote hazard_scenarios_test.hex covering 6 cases: load feeding rs2 instead of rs1, load feeding both rs1 and rs2 of the same consumer, a chained load-use (load result used as the address of the next load), a gap=1 filler that should not stall (forwarding should already handle it, this is the negative case), a load feeding a branch operand, and two independent load-use hazards back to back
+
+### bugs hit
+- none in the stall/hazard_detect logic itself, all 6 register value checks came back correct first run
+- one thing flagged, not fixed: the branch scenario's diagnostic print showed rs1=x at the moment BEQ hit EX, even though branch_taken should've been 1 off a correct 42==42 compare. This is something I look to tackle on day 62.
+
+### results
+- x5=20, x7=23 correct (load on rs2, stalled correctly)
+- x8=7, x9=14 correct (load on both operands, stalled correctly)
+- x10=24, x11=77 correct (chained load-use, stalled correctly)
+- x12=99, x14=104 correct (gap=1, correctly did not stall, forwarding handled it same as day 59)
+- x20=77, x21=80, x22=7, x23=10 correct (two independent hazards back to back, no interference between them)
+- branch scenario: register level result path untested today since branch redirect doesnt exist yet
+
+### what got built
+- programs/generated/hazard_scenarios_test.hex
+- tb/core/core_pipelined_hazard_scenarios_tb.v
+- day 60's hazard_detect.v, pc.v, if_id_reg.v, id_ex_reg.v all untouched, purely a testing day same as day 59 was for forwarding
