@@ -31,31 +31,60 @@ def b_type(imm, rs2, rs1, funct3, opcode):
 OP_BRANCH = 0x63
 
 program = [
-    # set up ALL branch operands up front, with a comfortable gap before they're used
-    i_type(5, 0, 0x0, 1, OP_ITYPE), # 0: addi x1, x0, 5
-    i_type(5, 0, 0x0, 2, OP_ITYPE), # 4: addi x2, x0, 5
-    i_type(7, 0, 0x0, 3, OP_ITYPE), # 8: addi x3, x0, 7
-    i_type(3, 0, 0x0, 4, OP_ITYPE), # 12: addi x4, x0, 3
-    i_type(5, 0, 0x0, 6, OP_ITYPE), # 16: addi x6, x0, 5
-    i_type(9, 0, 0x0, 7, OP_ITYPE), # 20: addi x7, x0, 9
-    i_type(0, 0, 0x0, 0, OP_ITYPE), # 24: addi x0,x0,0 (filler)
-    i_type(0, 0, 0x0, 0, OP_ITYPE), # 28: addi x0,x0,0 (filler)
-    i_type(0, 0, 0x0, 0, OP_ITYPE), # 32: addi x0,x0,0 (filler)
-    b_type(12, 2, 1, 0x0, OP_BRANCH), # 36: beq x1, x2, 12 --> taken, target=48
-    i_type(111, 0, 0x0, 10, OP_ITYPE), # 40: addi x10, x0, 111 wrong path, must be flushed
-    i_type(222, 0, 0x0, 11, OP_ITYPE), # 44: addi x11, x0, 222 wrong path, must be flushed
-    i_type(99, 0, 0x0, 12, OP_ITYPE), # 48: addi x12, x0, 99 branch target, must execute
-    b_type(12, 4, 3, 0x1, OP_BRANCH), # 52: bne x3, x4, 12 --> taken (7!=3), target=64
-    i_type(111, 0, 0x0, 13, OP_ITYPE), # 56: addi x13, x0, 111 wrong path, must be flushed
-    i_type(222, 0, 0x0, 14, OP_ITYPE), # 60: addi x14, x0, 222 wrong path, must be flushed
-    i_type(88, 0, 0x0, 15, OP_ITYPE), # 64: addi x15, x0, 88 branch target, must execute
-    b_type(12, 7, 6, 0x0, OP_BRANCH), # 68: beq x6, x7, 12 --> not taken (5!=9), falls through
-    i_type(55, 0, 0x0, 16, OP_ITYPE), # 72: addi x16, x0, 55 normal fallthrough, must execute
-    i_type(66, 0, 0x0, 17, OP_ITYPE), # 76: addi x17, x0, 66 normal fallthrough, must execute
+    # Section A: all 6 branch types, same operand pair, taken + not taken
+    # x1 = 0xFFFFFFFF (-1 signed, huge unsigned), x2 = 3
+    # deliberately picked so signed vs unsigned comparisons disagree on the same operands
+    i_type(-1, 0, 0x0, 1, OP_ITYPE), # 0: addi x1, x0, -1
+    i_type(3, 0, 0x0, 2, OP_ITYPE), # 4: addi x2, x0, 3
+    i_type(0, 0, 0x0, 0, OP_ITYPE), # 8: addi x0,x0,0 (filler)
+    i_type(0, 0, 0x0, 0, OP_ITYPE), # 12: addi x0,x0,0 (filler)
+    i_type(0, 0, 0x0, 0, OP_ITYPE), # 16: addi x0,x0,0 (filler)
+
+    b_type(12, 2, 1, 0x0, OP_BRANCH), # 20: beq x1,x2,12 --> not taken (-1 != 3)
+    i_type(111, 0, 0x0, 10, OP_ITYPE), # 24: addi x10,x0,111 (executes, not flushed)
+    i_type(222, 0, 0x0, 11, OP_ITYPE), # 28: addi x11,x0,222 (executes)
+    i_type(99, 0, 0x0, 12, OP_ITYPE), # 32: addi x12,x0,99 (executes either way)
+
+    b_type(12, 2, 1, 0x1, OP_BRANCH), # 36: bne x1,x2,12 --> taken, target=48
+    i_type(111, 0, 0x0, 13, OP_ITYPE), # 40: addi x13,x0,111 wrong path, flushed
+    i_type(222, 0, 0x0, 14, OP_ITYPE), # 44: addi x14,x0,222 wrong path, flushed
+    i_type(99, 0, 0x0, 15, OP_ITYPE), # 48: addi x15,x0,99 target, executes
+
+    b_type(12, 2, 1, 0x4, OP_BRANCH), # 52: blt x1,x2,12 (signed) --> taken (-1<3), target=64
+    i_type(111, 0, 0x0, 16, OP_ITYPE), # 56: addi x16,x0,111 wrong path, flushed
+    i_type(222, 0, 0x0, 17, OP_ITYPE), # 60: addi x17,x0,222 wrong path, flushed
+    i_type(99, 0, 0x0, 18, OP_ITYPE), # 64: addi x18,x0,99 target, executes
+
+    b_type(12, 2, 1, 0x5, OP_BRANCH), # 68: bge x1,x2,12 (signed) --> not taken (-1>=3 false)
+    i_type(111, 0, 0x0, 19, OP_ITYPE), # 72: addi x19,x0,111 (executes, not flushed)
+    i_type(222, 0, 0x0, 20, OP_ITYPE), # 76: addi x20,x0,222 (executes)
+    i_type(99, 0, 0x0, 21, OP_ITYPE), # 80: addi x21,x0,99 (executes)
+
+    b_type(12, 2, 1, 0x6, OP_BRANCH), # 84: bltu x1,x2,12 (unsigned) --> not taken (huge<3 false)
+    i_type(111, 0, 0x0, 22, OP_ITYPE), # 88: addi x22,x0,111 (executes, not flushed)
+    i_type(222, 0, 0x0, 23, OP_ITYPE), # 92: addi x23,x0,222 (executes)
+    i_type(99, 0, 0x0, 24, OP_ITYPE), # 96: addi x24,x0,99 (executes)
+
+    b_type(12, 2, 1, 0x7, OP_BRANCH), # 100: bgeu x1,x2,12 (unsigned) --> taken (huge>=3), target=112
+    i_type(111, 0, 0x0, 25, OP_ITYPE), # 104: addi x25,x0,111 wrong path, flushed
+    i_type(222, 0, 0x0, 26, OP_ITYPE), # 108: addi x26,x0,222 wrong path, flushed
+    i_type(99, 0, 0x0, 27, OP_ITYPE), # 112: addi x27,x0,99 target, executes
+
+    # Section B: backward branch, real loop, 3 iterations
+    # tests negative immediate redirect + repeated taken flush + a clean
+    # not taken exit that falls through to the right place afterward
+    i_type(3, 0, 0x0, 30, OP_ITYPE), # 116: addi x30,x0,3 loop counter
+    i_type(0, 0, 0x0, 31, OP_ITYPE), # 120: addi x31,x0,0 iteration marker
+    i_type(1, 31, 0x0, 31, OP_ITYPE), # 124: LOOP: addi x31,x31,1
+    i_type(-1, 30, 0x0, 30, OP_ITYPE), # 128: addi x30,x30,-1 (producer for x30)
+    i_type(0, 0, 0x0, 0, OP_ITYPE), # 132: addi x0,x0,0 (filler1)
+    i_type(0, 0, 0x0, 0, OP_ITYPE), # 136: addi x0,x0,0 (filler2)
+    b_type(-16, 0, 30, 0x1, OP_BRANCH), # 140: bne x30,x0,-16 --> loop back to 124 while x30!=0
+    i_type(77, 0, 0x0, 28, OP_ITYPE), # 144: addi x28,x0,77 post loop marker, exit target
 ]
 
-with open("programs/generated/branch_flush_test.hex", "w") as f:
+with open("programs/generated/branch_scenarios_test.hex", "w") as f:
     for instr in program:
         f.write(f"{instr:08x}\n")
 
-print(f"wrote {len(program)} instructions to branch_flush_test.hex")
+print(f"wrote {len(program)} instructions to branch_scenarios_test.hex")

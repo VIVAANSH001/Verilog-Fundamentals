@@ -180,3 +180,35 @@ separate log from pipeline-notes.md cause phase 4's structural pipeline build (d
 - programs/generated/branch_flush_test.hex
 - tb/core/core_pipelined_branch_flush_tb.v
 - still open: branch_comp itself is still unforwarded, same gap day 61 flagged. today just made sure that gap doesnt corrupt the flush test, didnt fix the gap itself. next real fix is either extending stall to 2 cycles specifically for load-into-branch, or giving branch_comp its own forward_a/forward_b paths same shape as the ALU's. not today's problem, but its the next thing sitting on top of this
+
+## DAY 64: Test Branch Flushing Thoroughly
+
+### what was covered
+- day 62 built the flush mechanism and proved it on exactly 3 cases: beq taken, bne taken, beq not taken. today's job was stress testing it the way day 59 stress tested forwarding and day 61 stress tested the stall, one demo case isnt the same as proving the mechanism generally
+- two things day 62 never touched: the other 4 branch types (blt, bge, bltu, bgeu), and a backward branch. every branch in day 62's test only ever jumped forward. real loops jump backward, so a redirect that only handles positive immediates correctly would still pass day 62 and be silently broken
+- wrote branch_scenarios_test.hex, two sections: all 6 branch types off one shared operand pair, then a real 3 iteration backward-branching loop
+
+### the test program
+- section A: x1 = 0xFFFFFFFF (-1 signed, huge unsigned), x2 = 3, chosen specifically so signed and unsigned comparisons disagree on the exact same operands. blt taken (-1 < 3 signed) but bltu not taken (huge not < 3 unsigned) off the identical x1/x2 pair, same disagreement-pair trick from the original soc_branch_tb.v, just now proving the pipelined + flushed version handles it too, not just the single-cycle core
+- section B: backward branch loop, x30 counts down from 3, bne branches back to the loop start while x30 != 0, x31 counts how many times the loop body actually ran, x28 is a marker only reachable by falling through the final not-taken exit
+- kept the day 62 lesson in mind setting this up: 3 filler instructions between x1/x2 setup and the first branch, same reason as before, branch_comp still has no forwarding
+
+### bugs hit
+- real logic bug this time, not a test mistake: the loop initially had only the standard 3-instruction gap I'd been using out of habit between the counter decrement and the branch that reads it. worked out the actual minimum needed instead of just reusing 3 out of habit, turned out 2 fillers is the exact minimum for this specific gap (decrement enters EX at cycle N, commits at N+2, branch needs to read it during ID at cycle N+2 or later, so branch has to be at least 3 instruction slots after the decrement, meaning 2 fillers in between). used exactly 2 to prove I understood the timing precisely instead of just overpadding and hoping
+
+### results
+- BEQ (not taken): x10=111, x11=222, x12=99, correct, normal fallthrough, nothing flushed
+- BNE (taken): x13=0, x14=0 (flushed), x15=99 (target), correct
+- BLT (taken, signed): x16=0, x17=0 (flushed), x18=99 (target), correct, -1 < 3 evaluated correctly
+- BGE (not taken, signed): x19=111, x20=222, x21=99, correct, -1>=3 correctly false
+- BLTU (not taken, unsigned): x22=111, x23=222, x24=99, correct, huge<3 correctly false, this is the one that would've broken if signed/unsigned wires were ever crossed
+- BGEU (taken, unsigned): x25=0, x26=0 (flushed), x27=99 (target), correct, huge>=3 correctly true, direct disagreement confirmed against BLT's result off the same x1/x2
+- loop: x30=0 (counted all the way down), x31=3 (looped exactly 3 times, not 2 or 4), x28=77 (correct continuation after the final not-taken exit)
+- branch_flush_out fired on exactly the 5 taken branches across the whole run (bne, blt, bgeu in section A, plus the two taken loop iterations in section B) and stayed 0 on every not-taken branch, timing matched design intent on every single one, no exceptions
+
+### what got built
+- programs/encoder/encoder.py: program list replaced for branch_scenarios_test.hex
+- programs/generated/branch_scenarios_test.hex
+- tb/core/core_pipelined_branch_scenarios_tb.v
+- no RTL changed today, purely a testing day same as day 59 and day 61 were, day 62's if_id_reg.v/core_pipelined.v changes untouched and confirmed to hold up under full branch type + backward branch coverage
+- still open, same as day 61/62: branch_comp itself still has no forwarding. today's test worked around it correctly (filler spacing everywhere operands are used) but the gap itself is unfixed. next concept session is queued to cover this properly, likely either a targeted 2-cycle stall for load/alu-into-branch or giving branch_comp its own forward_a/forward_b paths
