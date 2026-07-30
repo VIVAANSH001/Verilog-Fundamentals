@@ -11,6 +11,7 @@ module if_id_reg (
     input wire clk,
     input wire rst,
     input wire stall,
+    input wire flush,
     input wire [31:0] instr_in,
     input wire [31:0] pc_in,
     output reg [31:0] instr_out,
@@ -18,7 +19,7 @@ module if_id_reg (
 
     always @(posedge clk) 
     begin
-        if (rst) 
+        if (rst || flush) 
         begin
             instr_out <= 32'b0;
             pc_out <= 32'b0;

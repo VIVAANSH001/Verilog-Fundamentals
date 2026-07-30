@@ -149,3 +149,34 @@ separate log from pipeline-notes.md cause phase 4's structural pipeline build (d
 - programs/generated/hazard_scenarios_test.hex
 - tb/core/core_pipelined_hazard_scenarios_tb.v
 - day 60's hazard_detect.v, pc.v, if_id_reg.v, id_ex_reg.v all untouched, purely a testing day same as day 59 was for forwarding
+
+## DAY 62: Control Hazard - Branch Flushing
+
+### what was covered
+- branch_comp has existed since day 39/52, its been computing branch_taken correctly this whole time, but ex_branch_taken_final was always a dead end wire, nothing downstream ever used it. taken branches had zero actual effect on control flow, pipeline just kept fetching sequentially regardless
+- today's job was making a taken branch actually do something: redirect fetch to the real target, and kill the two instructions that get wrongly fetched off the sequential path while the branch is resolving (one sitting in ID, one currently being fetched in IF)
+- this is a one cycle pulse problem, not a stall problem. branch resolves in EX, ex_branch_taken_final is high for exactly that one cycle, and both wrong-path instructions have to get squashed off the same pulse, simultaneously, not staggered across two cycles like stall/flush handles load-use
+
+### the fix
+- core_pipelined.v: pc_next mux extended, branch_target = id_ex_pc_out + id_ex_imm_out (both already sitting in id_ex_reg, no new plumbing needed there), muxed against the existing pc_current+4 default based on ex_branch_taken_final
+- if_id_reg.v: needed a genuinely new port, flush, separate from stall. stall means hold current output, flush means zero it out. reused the same rst style zeroing, just OR'd flush into the same branch as rst
+- id_ex_reg.v: no new port needed, its flush input already existed from day 60's stall logic. just changed the instantiation to flush(stall |ex_branch_taken_final) instead of flush(stall) alone, same bubble mechanism, now with two independent triggers feeding it
+- both if_id_reg's new flush and id_ex_reg's extended flush get driven off the exact same ex_branch_taken_final wire, same edge, so the ID-stage instruction and the IF stage instruction both get killed in the same cycle instead of needing the flush to persist
+- added branch_flush_out as a new observability port on core_pipelined, mirrors day 60's stall_out, same reasoning, needed a direct signal to confirm flush timing in the tb instead of inferring it from register values after the fact
+
+### bugs hit
+- none.
+
+### results
+- branch 1 (beq, taken): x10=0, x11=0 (both wrong path instructions correctly flushed, never executed), x12=99 (branch target correctly executed)
+- branch 2 (bne, taken): x13=0, x14=0 (flushed), x15=88 (target executed), second branch type confirms it wasnt a beq specific fluke
+- branch 3 (beq, not taken): x16=55, x17=66, normal sequential fallthrough, no flush fired. this one matters as much as the taken cases, proves flush doesnt fire unconditionally on every branch regardless of outcome
+- branch_flush_out confirmed high for exactly one cycle on both taken branches, 0 everywhere else including the not taken branch, timing matches design intent exactly
+
+### what got built
+- rtl/core/if_id_reg.v: flush input added, same priority level as rst
+- rtl/core/core_pipelined.v: branch_target wire + pc_next mux, if_id_reg's flush wired to ex_branch_taken_final, id_ex_reg's flush extended to stall | ex_branch_taken_final, branch_flush_out port added
+- programs/encoder/encoder.py: program list replaced for branch_flush_test.hex, same i_type/r_type/b_type helpers reused unmodified
+- programs/generated/branch_flush_test.hex
+- tb/core/core_pipelined_branch_flush_tb.v
+- still open: branch_comp itself is still unforwarded, same gap day 61 flagged. today just made sure that gap doesnt corrupt the flush test, didnt fix the gap itself. next real fix is either extending stall to 2 cycles specifically for load-into-branch, or giving branch_comp its own forward_a/forward_b paths same shape as the ALU's. not today's problem, but its the next thing sitting on top of this

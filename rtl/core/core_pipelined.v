@@ -52,15 +52,24 @@ module core_pipelined (
     output wire mem_wb_reg_write_out,
     output wire [1:0] mem_wb_result_src_out,
     output wire [31:0] write_back_data_out,
-    output wire stall_out);
+    output wire stall_out,
+    output wire branch_flush_out);
 
     // IF stage
     reg [31:0] pc_next;
     pc u_pc (.clk(clk), .rst(rst), .stall(stall), .pc_next(pc_next), .pc_current(pc_current));
 
+    wire [31:0] branch_target = id_ex_pc_out + id_ex_imm_out;
     always @(*)
     begin
-        pc_next = pc_current + 32'd4;
+        if(ex_branch_taken_final)
+        begin
+            pc_next = branch_target;
+        end
+        else
+        begin
+            pc_next = pc_current + 32'd4;
+        end
     end
 
     // IF/ID pipeline register
@@ -68,6 +77,7 @@ module core_pipelined (
         .clk(clk),
         .rst(rst),
         .stall(stall),
+        .flush(ex_branch_taken_final),
         .instr_in(instruction),
         .pc_in(pc_current),
         .instr_out(if_id_instr_out),
@@ -98,6 +108,7 @@ module core_pipelined (
         .if_id_rs2(rs2),
         .stall(stall));
     assign stall_out = stall;
+    assign branch_flush_out = ex_branch_taken_final;
 
     wire [31:0] id_ex_pc_out;
     wire [4:0] id_ex_rs1_out, id_ex_rs2_out;
@@ -113,7 +124,7 @@ module core_pipelined (
     id_ex_reg u_id_ex (
         .clk(clk),
         .rst(rst),
-        .flush(stall),
+        .flush(stall | ex_branch_taken_final),
         .pc_in(if_id_pc_out),
         .rs1_data_in(rs1_data),
         .rs2_data_in(rs2_data),
