@@ -212,3 +212,41 @@ separate log from pipeline-notes.md cause phase 4's structural pipeline build (d
 - tb/core/core_pipelined_branch_scenarios_tb.v
 - no RTL changed today, purely a testing day same as day 59 and day 61 were, day 62's if_id_reg.v/core_pipelined.v changes untouched and confirmed to hold up under full branch type + backward branch coverage
 - still open, same as day 61/62: branch_comp itself still has no forwarding. today's test worked around it correctly (filler spacing everywhere operands are used) but the gap itself is unfixed. next concept session is queued to cover this properly, likely either a targeted 2-cycle stall for load/alu-into-branch or giving branch_comp its own forward_a/forward_b paths
+
+## DAY 65: Test Jumps With Pipeline + Fibonacci Integration
+
+### what was covered
+- id_ex_jump_out existed since day 51 but nothing ever consumed it, jumps had zero effect on control flow, same dead wire situation branches were in pre day 62
+- jal and jalr resolve at different stages so needed two different fixes, not one copy pasted off branch flush. jal is unconditional, no register read, resolves in ID off if_id_pc_out + imm. jalr needs rs1+imm then bit0 forced to 0, cant resolve before EX, same timing branch_comp already has
+- flush shape follows resolution point not the other way round. jal only kills 1 bubble (IF), jalr kills 2 (IF+ID) same as branch
+
+### the fix
+- pc_next mux extended again, priority now branch, then jalr, then jal, then pc+4
+- id_jal = jump && !alu_src, alu_src is only set for jalr so thats enough to tell them apart without a new control signal
+- jalr_taken_final = id_ex_jump_out & id_ex_alu_src_out, target reuses ex_alu_result directly instead of building separate hardware, so jalr gets EX stage forwarding for free off the existing forward_a mux. branch_comp still doesnt get this, still open since day 61
+- if_id_reg flush extended to branch | jalr | jal
+- id_ex_reg flush extended to stall | branch | jalr only, jal deliberately left out, the jal instruction itself is sitting in ID when id_jal fires and has to latch through normally not get squashed
+- added jalr_flush_out and jal_flush_out as new observability ports same reasoning as day 62's branch_flush_out
+
+### bugs hit
+- not an RTL bug, a test program one. tried running the old fib.hex (day 49, single cycle) unmodified on the pipeline as the integration test and it just didnt work, x1/x2/x4 stuck at their init values, loop never ran
+- turned out to be the exact branch_comp gap flagged open since day 61/62/64, just actually triggered for real this time instead of theoretical. addi x5,x0,10 immediately followed by bge x4,x5 is gap 0, branch read x5 before its writeback landed, saw 0 instead of 10, 0>=0 fired true and exited the loop on iteration 0
+- fix is the same call as day 62/64, pad the program dont touch branch_comp. reordered setup so x4/x5 get produced first with enough gap, and added 3 fillers before the backward jump so the re-check next iteration also clears gap=3 (day 58's write-through math again)
+- new file fib_pipeline.hex, original fib.hex left untouched, still correct for the single cycle core
+
+### results
+- jump test, all 3 sections correct first real run once it compiled clean:
+  - forward jal + link: x10=8, x20=0 (flushed), x21=99
+  - jalr call/return + forwarded rs1 + bit0 clear all in one shot, gap=0 into the jalr on purpose: x1=20, x29=222, x7=41, x8=36, x31=222
+  - backward jal: x24=50, x27=111 (only reachable via the backward jump), x28=42, settled into steady state by cycle 22
+- fib integration, repointed at fib_pipeline.hex: x1=55, x2=89, x4=10, x5=10, all correct. first real end to end proof the pipeline works as a whole cpu, not just isolated hazard mechanisms tested one at a time
+
+### what got built
+- core_pipelined.v: jal/jalr target wires, pc_next mux extended, if_id_reg and id_ex_reg flush extended, jalr_flush_out/jal_flush_out ports added
+- programs/handcoded/jump_pipeline_test.hex
+- tb/core/core_pipelined_jump_tb.v
+- programs/handcoded/fib_pipeline.hex
+- tb/core/core_pipelined_fib_tb.v
+- day 49's fib.hex untouched, kept as the single cycle reference
+- still open, same as day 61/62/64: branch_comp still has no forwarding. jalr's fix shows the pattern of reusing the forwarded ALU operand works, but it doesnt port over directly since branch_comp doesnt go through the ALU at all
+- new flag, not fixed: hazard_detect reads if_id_rs1/rs2 off a fixed slice regardless of instruction format. for jal those bits are actually immediate bits not registers, so a load 2 instructions before a jal could in theory false trigger a stall. todays tests had zero loads in them so this never actually got hit, same bucket as day 64's x40 wraps to x8 bug
