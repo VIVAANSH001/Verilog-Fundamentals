@@ -274,3 +274,22 @@ separate log from pipeline-notes.md cause phase 4's structural pipeline build (d
 - tb/core/cpi_tb.v
 - docs/performance-notes.md, new file, results table + interpretation lives there
 - no core RTL touched today, purely a measurement day same shape as day 59/61/64 were testing days for already-built mechanisms
+
+## DAY 67: Edge Case Grind, Branch + Forward
+
+### what was covered
+Picked 2 of the plan's edge case candidates: branch immediately consuming a forwarded value, and load-use immediately followed by a branch. Both target the branch_comp gap open since day 61.
+
+### bugs hit
+First version of branch_forward_test.hex passed by accident, x6's producer was only 2 instructions ahead of the branch, not enough margin, so both operands came back stale (0==0 coincidentally matched the real 42==42 answer). Fixed by giving x6 a proper ≥3 instruction gap and isolating x5 (gap=0) as the actual thing under test. Lesson: a branch test that only checks final register state can pass on totally wrong internal data, printing rs1_data/rs2_data directly is what caught it.
+
+### results
+Both tests fail identically: rs1_data stale, rs2_data correct, branch_taken=0 when it should be 1. Confirms one root cause, not two, branch_comp has zero forwarding regardless of whether the producer was a plain instruction or a load. hazard_detect's stall logic itself is fine.
+
+### what got built
+- programs/handcoded/branch_forward_test.hex + tb/core/branch_forward_edge_tb.v
+- programs/handcoded/hazard_branch_test.hex + tb/core/hazard_branch_edge_tb.v
+- no RTL touched, reproduction day only
+
+### still open
+branch_comp has no forwarding path. Day 68: fix it (check if forward_a/forward_b can be reused directly before building anything new), rerun today's two tests as regression checks. If time allows after: store-after-load and hazard_detect's jal field-read risk.
