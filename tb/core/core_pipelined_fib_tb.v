@@ -9,9 +9,16 @@ module core_pipelined_fib_tb;
     wire mem_write, mem_read;
 
     core_pipelined uut (
-        .clk(clk), .rst(rst), .instruction(instruction), .pc_current(pc_current),
-        .mem_rdata(mem_rdata), .mem_addr(mem_addr), .mem_wdata(mem_wdata),
-        .mem_byte_en(mem_byte_en), .mem_write(mem_write), .mem_read(mem_read));
+        .clk(clk),
+        .rst(rst),
+        .instruction(instruction),
+        .pc_current(pc_current),
+        .mem_rdata(mem_rdata),
+        .mem_addr(mem_addr),
+        .mem_wdata(mem_wdata),
+        .mem_byte_en(mem_byte_en),
+        .mem_write(mem_write),
+        .mem_read(mem_read));
 
     instr_mem u_instr_mem (.pc_current(pc_current),.instruction(instruction));
     mem_interface u_mem_interface (.clk(clk),.addr(mem_addr),.wdata(mem_wdata),.byte_en(mem_byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(mem_rdata));
@@ -19,8 +26,14 @@ module core_pipelined_fib_tb;
     always #5 clk = ~clk;
 
     initial begin
-        for (i = 0; i < 4096; i = i + 1) u_mem_interface.ram.mem[i] = 8'h00;
-        for (i = 0; i < 32; i = i + 1) uut.u_regfile.registers[i] = 32'h0;
+        for (i = 0; i < 4096; i = i + 1) 
+        begin
+            u_mem_interface.ram.mem[i] = 8'h00;
+        end
+        for (i = 0; i < 32; i = i + 1) 
+        begin
+            uut.u_regfile.registers[i] = 32'h0;
+        end
 
         clk = 0; rst = 1;
         @(posedge clk);
