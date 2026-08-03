@@ -250,3 +250,27 @@ separate log from pipeline-notes.md cause phase 4's structural pipeline build (d
 - day 49's fib.hex untouched, kept as the single cycle reference
 - still open, same as day 61/62/64: branch_comp still has no forwarding. jalr's fix shows the pattern of reusing the forwarded ALU operand works, but it doesnt port over directly since branch_comp doesnt go through the ALU at all
 - new flag, not fixed: hazard_detect reads if_id_rs1/rs2 off a fixed slice regardless of instruction format. for jal those bits are actually immediate bits not registers, so a load 2 instructions before a jal could in theory false trigger a stall. todays tests had zero loads in them so this never actually got hit, same bucket as day 64's x40 wraps to x8 bug
+
+## DAY 66: Measure CPI on a Few Programs
+
+### what was covered
+- lighter sunday per the plan, one task: measure CPI (cycles / instructions retired) on a few programs instead of continuing hazard mechanism work
+- needed zero core changes for this. id_ex_reg_write_out/mem_write_out/branch_out/jump_out already exist as outputs since day 51/60, every real decoded instruction sets at least one of them, a bubble from any flush source has all four forced to zero by id_ex_reg's reset-style zeroing anyway. so id_ex_valid = OR of all four, pure testbench logic
+- known heuristic not a general "valid" bit: an unmapped opcode would look identical to a bubble under this (control_unit's default case also zeroes all four). none of the test programs use unmapped opcodes so its safe for today, flagging it as a real tradeoff not the "correct" general solution
+
+### the approach
+- one reusable tb, tb/core/cpi_tb.v, recompiled per program same convention as always (repoint instr_mem.v's readmemh path). WINDOW_START/WINDOW_END params overridable via -P for a second, windowed pass once the full run shows where a loop's steady state actually sits
+
+### bugs hit
+- not an RTL bug, a workflow one: recompiling cpi_tb.v alone without first re-editing instr_mem.v's readmemh path doesnt reload a new program, vvp just reruns the previously built binary. cost a wasted round grepping fib/branch traces against a stale jump-program build, results looked like pc=20 was jump program data cause thats literally what it was
+
+### results
+- full program run: hazard_scenarios_test.hex worst (CPI 1.333, dense back to back load-use stalls, matches prediction), fib_pipeline.hex best (1.134, most realistic/hazard-light program of the batch)
+- windowed steady-state (one loop iteration each): branch_scenarios_test.hex's Section B loop worst at 1.400 (every iteration is a taken backward branch = a flush), jump trap loop at 1.333 despite being just 3 instructions, fib loop body best at 1.111
+- jump loop's 1.333 traces to something real: jal resolves in ID not IF (day 65), so every pass through the loop IF fetches one wrong-path instruction (pc+4) the cycle before the redirect lands, gets flushed as a bubble. 1 wasted cycle out of every 4-cycle loop iteration is exactly the observed penalty
+- full breakdown + numbers in docs/performance-notes.md, not duplicating the table here
+
+### what got built
+- tb/core/cpi_tb.v
+- docs/performance-notes.md, new file, results table + interpretation lives there
+- no core RTL touched today, purely a measurement day same shape as day 59/61/64 were testing days for already-built mechanisms
