@@ -293,3 +293,27 @@ Both tests fail identically: rs1_data stale, rs2_data correct, branch_taken=0 wh
 
 ### still open
 branch_comp has no forwarding path. Day 68: fix it (check if forward_a/forward_b can be reused directly before building anything new), rerun today's two tests as regression checks. If time allows after: store-after-load and hazard_detect's jal field-read risk.
+
+## DAY 68: Fix branch_comp Forwarding + Encoder Sanity Check
+
+### what was covered
+Day 67 isolated the bug (branch_comp has zero forwarding), today was actually fixing it, plus closing out the standing x40-style encoder risk flagged since day 64.
+
+### the fix
+branch_comp resolves in EX, same stage the ALU does, so alu_a_forwarded/alu_b_forwarded (already computed for the ALU's operands) turned out to be exactly what branch_comp needed. one-line rewire in core_pipelined.v, no new module, no new ports.
+
+### bugs hit
+- not a bug, a workflow miss: reran hazard_branch_edge_tb.v right after the fix but forgot to repoint instr_mem.v back to hazard_branch_test.hex, so it silently reran branch_forward_test.hex instead. same class of mistake flagged day 66, caught it off the readmemh warning line before trusting the result.
+
+### results
+- branch_forward_edge_tb.v and hazard_branch_edge_tb.v (day 67's tests, unmodified) both flip clean: branch_taken=1, branch_flush=1, x20=99, x10=x11=0, on both the plain-forward case and the load-use case. gap open since day 61 is closed.
+- encoder.py runs clean on the real program (37 instructions, valid registers, no assert fires)
+- deliberately calling i_type with rd=40 throws AssertionError: rd out of range: x40 (valid: x0-x31) instead of silently wrapping. x40-style bug can't happen silently again.
+
+### what got built
+- rtl/core/core_pipelined.v: branch_comp's rs1_data/rs2_data now wired to alu_a_forwarded/alu_b_forwarded instead of raw id_ex_rs1_data_out/rs2_data_out
+- programs/encoder/encoder.py: _check_reg() added, called from i_type/r_type/s_type/b_type/j_type; __main__ guard added around the program list + file write
+- no new test files today, day 67's two edge-case tbs now double as the permanent regression check for this fix
+
+### still open
+- store-after-load (data_mem.v same-cycle read/write ordering) and hazard_detect's jal field-read risk (flagged day 65) both still queued, didn't get to either today

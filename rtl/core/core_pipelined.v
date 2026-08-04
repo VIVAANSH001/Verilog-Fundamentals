@@ -195,8 +195,7 @@ module core_pipelined (
     alu_32 u_alu (.a(ex_alu_a),.b(ex_alu_b),.alu_ctrl(ex_alu_ctrl),.result(ex_alu_result),.zero(ex_alu_zero));
 
     wire ex_branch_taken;
-    branch_comp u_branch_comp (.rs1_data(id_ex_rs1_data_out),.rs2_data(id_ex_rs2_data_out),.funct3(id_ex_funct3_out),.branch_taken(ex_branch_taken));
-
+    branch_comp u_branch_comp (.rs1_data(alu_a_forwarded),.rs2_data(alu_b_forwarded),.funct3(id_ex_funct3_out),.branch_taken(ex_branch_taken));
     // not wired back to PC yet, control hazard handling is Week 9 (Day 62)
     wire ex_branch_taken_final = id_ex_branch_out & ex_branch_taken;
 
