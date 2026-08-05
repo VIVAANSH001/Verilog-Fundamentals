@@ -28,7 +28,7 @@ module core (input wire clk,input wire rst,input wire [31:0] instruction,input w
     // REGISTER FILE
     wire [31:0] rs1_data, rs2_data;
     reg  [31:0] write_back_data;
-    regfile u_regfile (.clk(clk),.we(reg_write),.write_addr(rd),.write_data(write_back_data),.read_addr1(rs1),.read_addr2(rs2),.read_data1(rs1_data),.read_data2(rs2_data));
+    regfile #(.BYPASS_WRITE(0)) u_regfile (.clk(clk),.we(reg_write),.write_addr(rd),.write_data(write_back_data),.read_addr1(rs1),.read_addr2(rs2),.read_data1(rs1_data),.read_data2(rs2_data));
 
     // ALU
     wire [3:0] alu_ctrl;
