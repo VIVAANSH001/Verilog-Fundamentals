@@ -75,3 +75,37 @@ still correct, x1=55 x2=89 x4=10. higher CPI is expected, not a regression, same
 ## known simplification (single-cycle completion detection)
 
 - single_cycle_cycles_tb.v's completion signal is a fixed landmark address (pc_current reaching the instruction right after the program's known last instruction), not a general "program done" detector. works cleanly here because fib_pipeline.hex's control flow is fully known and static, would need reworking (or a dedicated halt instruction/signal) for a program whose exit point isn't known ahead of time
+
+# Extra Day: Real Gate-Level Timing (Nangate45, yosys + OpenSTA)
+
+first real synthesis + STA run, replacing the CPI-only numbers from days 66/69 with
+actual gate delay on a real 45nm liberty library.
+
+|      Core     | Critical path | Worst-hop fanout | Slack (10ns clock) |
+|----------------|----------------|-------------------|----------------------|
+|  single-cycle  |     2.70ns     |         62        |    7.27ns (MET)      |
+|    pipelined   |     9.06ns*    |        787        |    0.90ns (MET)      |
+
+*not trustworthy, see below
+
+## why the pipelined number is a synthesis artifact
+
+one pipeline stage boundary (IF/ID --> ID/EX) reporting more delay than single-cycle's
+entire datapath is architecturally impossible if real, there's strictly less logic
+between any two pipeline registers than across the whole single-cycle path. this alone
+proves the number is inflated, not evidence pipelining is slower.
+
+root cause: two unbuffered high-fanout nets off u_if_id's register (787 fanout/3.23ns,
+206 fanout/4.76ns) account for ~8ns of the 9.06ns. almost certainly stall/flush driving
+hundreds of gates directly, zero buffering, a physical-design gap in this flow.
+
+tried fanout-aware abc mapping (`map -F 16`): didn't fix it. dominant fanout barely
+moved, total delay improved incidentally (9.06 --> 7.76ns) from unrelated restructuring.
+real fix needs a max_fanout constraint before synthesis proper, not retrofitted after.
+
+## conclusion
+
+- single-cycle's 2.70ns is real, cite directly
+- pipelined's true critical path is unknown, not measured further, this is a known toolchain limitation (no buffer insertion / no P&R), not a CPU design flaw
+- the "shorter clock period compensates for more cycles" half of the pipelining argument can't be demonstrated with real numbers from this flow. day 69's cycle-count tradeoff (1.134x more cycles) remains the only solid measured number on the pipelining tradeoff
+- staying open going into phase 5 (polish/ship), not chasing further per plan

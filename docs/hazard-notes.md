@@ -354,3 +354,28 @@ Conclusion: this is a third, pre-existing bug, not caused by anything today. Bee
 ### still open
 - Scenario 6 (two independent load-use hazards back to back) in hazard_scenarios_test.hex: x20/x21 come back x, isolated to the first of the two hazards specifically, x22/x23 (the second hazard) unaffected. confirmed pre-existing, not caused by today's fixes, needs its own trace day, same rigor as day 61/64/67 gave their respective bugs, not a quick guess
 - toolchain setup (yosys + OpenSTA) and buffer-insertion re-synth for the single-cycle vs pipelined timing comparison, planned for later today, not started yet as of this log entry
+
+## EXTRA DAY (after day 70): Scenario 6 Trace + Timing Attempt
+
+### Scenario 6 bug (x20/x21 = x)
+- not a hazard_detect/forwarding bug. hazard_scenarios_test.hex's beq at pc=52 was hand-encoded with offset +8 instead of +4, so the taken branch skipped pc=56 (`lw s4,24(ra)`), the first instruction of scenario 6, entirely
+- s4 (x20) never written --> stays x (regfile has no reset). x21 inherits garbage via forwarding, correctly. x22/x23 are a separate later pair, untouched
+- fix: re-encoded offset +8 to +4 (01878463 to 01878263). all 6 scenarios pass now
+- lesson: hand-encoded hex needs full regression whenever upstream addresses shift
+
+### toolchain setup
+- yosys/OpenSTA/liberty state never actually existed on my laptop, built all of it from scratch: yosys (apt), CUDD (BDD lib, autotools build), OpenSTA (parallaxsw fork, cmake -DCUDD_DIR=...), nangate45.lib (OpenROAD-flow-scripts)
+
+### item 2: real STA timing
+- single-cycle: 2.70ns critical path, worst hop 62 fanout, slack 7.27ns
+- pipelined: 9.06ns, dominated by two unbuffered nets off u_if_id's register (787 fanout 3.23ns, then 206 fanout 4.76ns) — ~8ns of the 9ns total
+- tried abc's `map -F 16` fanout-aware mapping. didn't fix it: dominant fanout barely moved (787 --> 842, 206 --> 194), total delay dropped some (9.06 --> 7.76ns) from unrelated restructuring, not the actual nets
+- real fix needs a max_fanout constraint set before synthesis, not retrofitted onto abc. out of scope now per handoff's own fallback clause + moving into cleanup week
+
+### what got built
+- programs/generated/hazard_scenarios_test.hex: one instruction re-encoded
+- ~/eda/: yosys, cudd, opensta, nangate45.lib
+- /tmp/synth_*.ys, /tmp/sta_*.tcl, /tmp/abc_script_fanout.txt
+
+### still open (staying open, phase 5 is polish not new work)
+- pipelined core's true critical path is unknown, 9.06ns/7.76ns are both synthesis artifacts. single-cycle's 2.70ns is trustworthy and citable directly
