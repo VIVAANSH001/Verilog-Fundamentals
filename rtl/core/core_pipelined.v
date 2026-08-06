@@ -112,13 +112,19 @@ module core_pipelined (
     wire [31:0] rs1_data, rs2_data;
     regfile u_regfile (.clk(clk),.we(mem_wb_reg_write_out),.write_addr(mem_wb_rd_out),.write_data(write_back_data),.read_addr1(rs1),.read_addr2(rs2),.read_data1(rs1_data),.read_data2(rs2_data));
 
+    wire if_id_uses_rs1 = !(opcode == 7'b1101111 || opcode == 7'b0110111 || opcode == 7'b0010111);
+    wire if_id_uses_rs2 = (opcode == 7'b0110011 || opcode == 7'b0100011 || opcode == 7'b1100011);
+    
     wire stall;
     hazard_detect u_hazard_detect (
         .id_ex_mem_read(id_ex_mem_read_out),
         .id_ex_rd(id_ex_rd_out),
         .if_id_rs1(rs1),
         .if_id_rs2(rs2),
+        .if_id_uses_rs1(if_id_uses_rs1),
+        .if_id_uses_rs2(if_id_uses_rs2),
         .stall(stall));
+
     assign stall_out = stall;
     assign branch_flush_out = ex_branch_taken_final;
     assign jalr_flush_out = jalr_taken_final;
@@ -204,7 +210,7 @@ module core_pipelined (
         .clk(clk),
         .rst(rst),
         .alu_result_in(ex_alu_result),
-        .rs2_data_in(id_ex_rs2_data_out),
+        .rs2_data_in(alu_b_forwarded),
         .pc_in(id_ex_pc_out),
         .imm_in(id_ex_imm_out),
         .rd_in(id_ex_rd_out),

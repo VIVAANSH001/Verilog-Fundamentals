@@ -317,3 +317,40 @@ branch_comp resolves in EX, same stage the ALU does, so alu_a_forwarded/alu_b_fo
 
 ### still open
 - store-after-load (data_mem.v same-cycle read/write ordering) and hazard_detect's jal field-read risk (flagged day 65) both still queued, didn't get to either today
+
+## DAY 70: Store-After-Load + Hazard_Detect JAL False-Stall (Both Queued Items Closed)
+
+### what was covered
+Two items left over since day 65/67/68: store-after-load (does data_mem.v's combinational read see a same-cycle write correctly) and hazard_detect's fixed-slice jal field-read risk (flagged day 65, if_id_rs1/rs2 read off a fixed instruction slice regardless of format, jal's immediate bits sit in exactly those positions). Wrote one test per item, hand-crafted the jal test's immediate specifically so its bits[19:15] alias to 5, matching a preceding load's rd, to force the false-stall condition deliberately instead of hoping to stumble into it.
+
+### bugs hit
+Store-after-load test's first run immediately surfaced something bigger than what the test was built to check: `sw x2,0(x1)` wrote 0 instead of 77, one instruction after `addi x2,x0,77`. Not a data_mem.v timing bug at all, turned out ex_mem_reg's rs2_data_in was wired to id_ex_rs2_data_out (the raw regfile read from ID) instead of alu_b_forwarded, so stores never got forwarded write-data, only ever wrote whatever was in the register before the immediately-preceding producer landed. Same forwarding infrastructure from day 58 existed the whole time, just never wired into the store-data path specifically. Real bug, not a test mistake, near-identical shape to day 67/68's branch_comp gap: forwarding existed, just wasn't reaching every consumer that needed it.
+
+jal false-stall test confirmed exactly as predicted: stall=1 fires on the cycle id_ex_rd=5 lines up with the crafted jal in ID, PC visibly freezes for a bubble cycle. jal reads no registers at all, so this is a pure false positive, not a borderline case.
+
+### the fixes
+- ex_mem_reg's rs2_data_in changed from id_ex_rs2_data_out to alu_b_forwarded in core_pipelined.v, one-line rewire, same shape as day 68's branch_comp fix, reuses existing forwarding mux instead of adding new hardware
+- hazard_detect.v gained two new inputs, if_id_uses_rs1/if_id_uses_rs2, gating the stall condition per operand instead of comparing raw fixed-slice bits unconditionally. computed in core_pipelined.v off the ID-stage opcode: rs1 real for everything except jal/lui/auipc, rs2 real only for r-type/store/branch. general fix, not jal-specific, covers lui/auipc's same fixed-slice risk too even though today's test only targeted jal
+
+### the regression surprise
+Reran core_pipelined_hazard_scenarios_tb.v (day 61's test, unmodified) as a sanity check after both fixes landed. Scenario 6 (two independent load-use hazards back to back) came back with x20/x21 as x, expected 77/80. Scenarios 1 through 5 all still correct, so not a total regression, isolated to specifically the first of the two back-to-back hazards in that scenario.
+
+Bisected properly instead of guessing which of today's two fixes caused it: reverted the store-forwarding fix alone, reran, same x's. Reverted the hazard_detect fix alone instead, reran, same x's again. Neither fix alone explained it.
+
+Conclusion: this is a third, pre-existing bug, not caused by anything today. Been sitting in Scenario 6 since day 61 wrote the test, first time I actually looked closely at that specific case rather than reading the pass/fail summary line. Logged, not fixed today, out of scope for what today was budgeted for.
+
+### results
+- store_after_load_test.hex: wdata=77 (was 0), rdata=77, x3=77, x4=77, all correct post-fix. answers the original question too: data_mem.v's combinational read does correctly see a same-cycle-committed write, once the write actually contains the right data
+- jal_false_stall_test.hex: stall=0 throughout post-fix, including the exact cycle id_ex_rd=5 lines up with the jal in ID
+- core_pipelined_jump_tb.v (day 65's test, unmodified): full clean pass post-fix, every jal/jalr scenario correct, confirms the hazard_detect gating change didn't touch actual jump resolution, only stall detection
+- core_pipelined_hazard_scenarios_tb.v: scenarios 1-5 clean, scenario 6 (x20/x21) confirmed broken, confirmed pre-existing via git stash bisection against day 69's commit
+
+### what got built
+- rtl/core/core_pipelined.v: ex_mem_reg's rs2_data_in rewired to alu_b_forwarded, if_id_uses_rs1/if_id_uses_rs2 wires added off opcode, wired into hazard_detect instance
+- rtl/core/hazard_detect.v: if_id_uses_rs1/if_id_uses_rs2 inputs added, stall condition gated per-operand
+- programs/handcoded/store_after_load_test.hex + tb/core/store_after_load_tb.v
+- programs/handcoded/jal_false_stall_test.hex + tb/core/jal_false_stall_tb.v
+
+### still open
+- Scenario 6 (two independent load-use hazards back to back) in hazard_scenarios_test.hex: x20/x21 come back x, isolated to the first of the two hazards specifically, x22/x23 (the second hazard) unaffected. confirmed pre-existing, not caused by today's fixes, needs its own trace day, same rigor as day 61/64/67 gave their respective bugs, not a quick guess
+- toolchain setup (yosys + OpenSTA) and buffer-insertion re-synth for the single-cycle vs pipelined timing comparison, planned for later today, not started yet as of this log entry
