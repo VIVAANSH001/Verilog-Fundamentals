@@ -38,41 +38,41 @@
 ### R-type instructions (Register to Register)
 - These are register to register instructions. So here we need two source registers to do something and we return the result to a destination register.
 - Here is an image to show how the bits are allocated:
-- ![R-type](images/rtype.png.png)
+- ![R-type](images/rtype.png)
 - opcode tells which family of instruction it is like r-type then funct3 is used to narrow it down to groups within the family and funct7 here does the final narrowing down usually do not need it but in cases like ADD and SUB the SUB has 30th bit as 1 rather than 0 like in ADD thus funct7 plays a role.
 
 ### I-type instructions (Immediate operations)
 - Rather than two source registers ,this has one register and a constant baked into it directly. The constant is called an immediate.
 - Here is an image to show how the bits are allocated:
-- ![I-type](images/itype.png.png)
+- ![I-type](images/itype.png)
 - The 12 bit immediate is extended to 32 bits using sign extension.
 - This does not require funct7 as the opcode and funct3 are enough for distinguishing here.
 
 ### S-type instructions (Store instructions)
 - It is used for storing data to memory. It basically takes a value sitting in a register and writes it to a memory address (base register + offset).
 - Here is an image to show how the bits are allocated:
-- ![S-type](images/stype.png.png)
+- ![S-type](images/stype.png)
 - The immediate is split as RISC-V is designed in such a way that rs1 and rs2 bit positions should remain the same in all formats this allows the CPU to decode and perform register reading at the same time making it a lot more efficient.
 
 ### B-type instructions (Branch instructions)
 - These are used for conditional branches --> if some part of the code is correct jump to a different part of the program.
 - Here is an image to show how the bits are allocated:
-- ![B-type](images/btype.png.png)
+- ![B-type](images/btype.png)
 - Unlike S the splitting bits are reordered.
 - So upon reassembly the offset would look like:
-- ![B-type 2](images/btype,png.png)
+- ![B-type 2](images/btype2.png)
 - Cause of how RISC-V works the target address will always be at a even postion thus we always have a zero at the end giving us a 13 bit offset and more range. Thus to keep S and B as similar as possible and to try and keep the hardware as reused they had to reorder the bits.
 
 ### U-type instructions (Upper Immediate)
 - The simplest instruction format basically takes a 20 bit immediate and a destination register and just copies the immediate to the top 20 bits of the rd and the rest are zeroes mostly used to copy immediates to registers this instruction gives 20 bits and the rest are from I type.
 - Here is an image to show how the bits are allocated:
-- ![U-type](images/utype.png.png)
+- ![U-type](images/utype.png)
 - Only two instructions use this format and those being LUI and AUIPC.
 
 ### J-type instructions (Jump instruction)
 - Only one instruction uses this JAL (jump and link). All it does it jumps to the new address (PC + offset) and then saves the return address into rd (PC +4).
 - Here is an image to show how the bits are allocated:
-- ![J-type](images/jtype.png.png)
+- ![J-type](images/jtype.png)
 - Has a 21 bit offset reassembled allowing the jump range to be +- 1 MB.
 
 ### Key things that connect all the types
