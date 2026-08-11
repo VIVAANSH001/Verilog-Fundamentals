@@ -89,6 +89,9 @@ module core_pipelined_branch_scenarios_tb;
     end
 
     initial begin
+        $dumpfile("core_pipelined_branch_scenarios.vcd");
+        $dumpvars(0,core_pipelined_branch_scenarios_tb);
+        
         cyc = 0;
         for (i = 0; i < 4096; i = i + 1)
         begin
