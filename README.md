@@ -65,7 +65,7 @@ The pipelined version breaks that same datapath into five stages separated by pi
 
 ### Memory and the Path to Extensibility
 
-Both cores reach memory through the same seam. `mem_interface.v` sits between the core's memory port and the data RAM, and every load, store, and instruction fetch passes through it rather than touching RAM directly. Today it decodes exactly two ranges: `0x0000_0000` to `0x0000_0FFF` forwards to the 4KB data RAM, and everything at `0x1000_0000` and above is reserved and stubbed out. Nothing lives in that upper range yet, but because every memory access already flows through this one decoder, adding a peripheral later means writing the peripheral and giving it an address range, not touching the core, the pipeline, or the hazard logic. See [Extensibility](#extensibility) for how that seam is meant to get used.
+Both cores reach memory through the same seam. mem_interface.v sits between the core's memory port and the data RAM, and every load, store, and instruction fetch passes through it rather than touching RAM directly. Today it decodes three ranges: 0x0000_0000 to 0x0000_0FFF forwards to the 4KB data RAM, 0x1000_0000 to 0x1000_0007 routes to a UART transmitter, and everything else at 0x1000_0000 and above is still reserved and stubbed out. Because every memory access already flows through this one decoder, adding another peripheral means writing the peripheral and giving it an address range, not touching the core, the pipeline, or the hazard logic, exactly how the UART one was added. See Extensibility for how that seam is meant to get used.
 
 ## The Pipeline in Depth
 
@@ -139,7 +139,7 @@ A stack, tracked by the sp register and growing downward from a high address, pr
 
 ## Extensibility
 
-The [Architecture](#architecture) section introduced `mem_interface.v` as the seam every memory access flows through, and the address map it currently enforces: `0x0000_0000` to `0x0000_0FFF` forwards to the 4KB data RAM, everything at `0x1000_0000` and above is reserved and stubbed. This section is about why that seam exists and what it buys.
+The [Architecture](#architecture) section introduced `mem_interface.v` as the seam every memory access flows through, and the address map it currently enforces: `0x0000_0000` to `0x0000_0FFF` forwards to the 4KB data RAM, `0x1000_0000` to `0x1000_0007` is a UART peripheral, and everything else at `0x1000_0000` and above is still reserved and stubbed. This section is about why that seam exists and what it's already bought.
 
 ### Why a decoder instead of direct RAM access
 
@@ -147,7 +147,7 @@ The straightforward way to build this core would have the core's memory port wir
 
 ### What adding a peripheral actually looks like
 
-Because that seam already exists, adding a memory-mapped peripheral to this core doesn't touch the CPU, the pipeline, or the hazard logic at all. It's three steps, all of them outside `rtl/core/`:
+Because that seam already exists, adding a memory-mapped peripheral to this core doesn't touch the CPU, the pipeline, or the hazard logic at all. It's three steps, all of them outside `rtl/core/`'s CPU-proper files:
 
 1. Write the peripheral as a small register-mapped module, some combination of control, status, and data registers exposed on a simple read/write interface.
 2. Give it an address range inside `0x1000_0000` and above, and extend `mem_interface.v`'s decode logic to route that range to the new peripheral instead of the stub.
@@ -155,9 +155,13 @@ Because that seam already exists, adding a memory-mapped peripheral to this core
 
 That last point is the actual payoff of building the seam this way. The core doesn't need to know a peripheral exists to correctly execute an instruction that touches one, because as far as the core is concerned, it never stopped talking to `mem_interface.v`.
 
+This is no longer a hypothetical. `uart_mmio.v` is a register-mapped wrapper around a bit-banged UART transmitter, exposing a write-only `TX_DATA` register and a read-only `TX_STATUS` register at `0x1000_0000` and `0x1000_0004`. Adding it followed exactly the three steps above: the peripheral module was written, `mem_interface.v`'s decode logic grew one more address range, and the CPU core itself was never touched. A 16-instruction hand-encoded program (`programs/handcoded/uart_hello_test.hex`) proves the whole path end to end, polling `TX_STATUS`, storing to `TX_DATA`, and sending real bytes out over a serial line that an independent receiver instance, wired to the peripheral's `tx` pin through the same kind of hierarchical dot-path used elsewhere in this project's testbenches, reconstructs byte for byte (`tb/core/uart_program_tb.v`).
+
+Getting there wasn't just a wiring exercise. Three real bugs surfaced in the process, and all three shared a family resemblance: something that was correct at the instant of the triggering event but wrong by the time a downstream consumer actually acted on it one cycle later. A baud rate counter sized for a 50MHz reference clock silently wrapped and stalled the transmitter's FSM once the design's actual 100MHz simulation clock was plugged in. A status register could report "ready" during the two-cycle gap between a write being accepted and the peripheral's own busy flag catching up, letting a tight polling loop issue a second write while the first byte was still transmitting. And the byte being sent was originally read combinationally off the shared memory bus, which meant that by the time the peripheral actually needed it, the bus had already moved on to whatever the next instruction happened to be driving. Each fix followed the same shape: register whatever needed to survive past the moment it was valid, rather than trusting a value to still be there a cycle later just because it was correct when it was written.
+
 ### The path to a microcontroller
 
-Today the MMIO range is reserved but empty, a stub that silently drops writes and returns zero on reads. That's a deliberate placeholder, not a limitation to work around, since the goal for v1.0 was proving the seam exists and behaves correctly, not populating it. The natural next step, out of scope for this repository but the direct motivation for building things this way, is a UART peripheral mapped into that reserved range, followed by I2C/I3C, a timer, and GPIO, each occupying its own slice of the address space the decoder already knows to route correctly. At that point this stops being a CPU core with a stubbed-out feature and becomes a small microcontroller, without ever having required a rewrite of the part that took the longest to get right.
+UART is live proof the seam works, not the finish line. I2C/I3C, a timer, and GPIO are the natural next additions, each occupying its own slice of the address space the decoder already knows how to route correctly, following the identical three-step process UART just went through. At that point this stops being a CPU core with one populated peripheral and becomes a small microcontroller, without ever having required a rewrite of the part that took the longest to get right.
 
 ## Verification / Testing
 
@@ -269,7 +273,7 @@ The `verilog-fundamentals/` reorganization (11 topic folders, previously loose a
 
 **Pipelined critical path is unverified.** The single-cycle core's 2.70ns critical path comes from a real synthesis and static timing analysis flow (Yosys, OpenSTA, Nangate45) and is solid enough to cite directly. The same flow run against the pipelined core reports figures in the 7 to 9ns range, and that number is not trustworthy, it's an artifact of unbuffered high-fanout nets coming off the IF/ID pipeline register, not a measurement of how fast the design actually runs. A correct fix requires a max-fanout constraint applied before synthesis, not retrofitted onto the existing netlist afterward. This is a known toolchain gap (no buffer insertion, no place-and-route), not a flaw in the CPU design itself, and it means the "shorter clock period offsets more cycles" half of the pipelining argument can't be demonstrated with real numbers from this flow. The CPI comparison in [Results](#results) remains the only solid measured number on that tradeoff.
 
-**No peripherals exist yet.** The MMIO address range (`0x1000_0000` and above) is reserved and routed correctly by `mem_interface.v`, but nothing currently lives there beyond a stub that drops writes and returns zero on reads. UART, I2C/I3C, timers, and GPIO are the natural next additions and were deliberately left out of v1.0's scope; see [Extensibility](#extensibility) for what adding one actually involves.
+**UART is the only populated peripheral so far.** The MMIO address range (`0x1000_0000` and above) is reserved and routed correctly by `mem_interface.v`, and `0x1000_0000` to `0x1000_0007` is now live, a real UART transmitter proven through the actual pipelined core. I2C/I3C, timers, and GPIO are the natural next additions and remain out of v1.0's scope; see [Extensibility](#extensibility) for what adding one actually involves, UART is the worked example.
 
 **CPI measurement relies on a heuristic, not a dedicated valid signal.** Retired-instruction counting treats any cycle where `id_ex_reg_write`, `id_ex_mem_write`, `id_ex_branch`, or `id_ex_jump` is high as a real instruction in EX. This is accurate for every program in this repository, but an unmapped opcode would produce the same all-zero signature as a bubble under this method, since `control_unit.v`'s default case zeroes the same four signals a flush does. A general solution would thread a dedicated valid bit through every pipeline register rather than reusing existing control signals for double duty; that wasn't built here since no test program in this project exercises an unmapped opcode.
 
