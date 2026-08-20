@@ -234,7 +234,7 @@ x4 (i, loop counter) = 10 (expect 10)
 x5 (N, loop bound) = 10 (expect 10)
 ```
 
-The `WARNING` line is expected, not a failure — `$readmemh` always reports this since the hex file doesn't fill the full 1024-word instruction memory, and it doubles as confirmation of exactly which program got loaded, worth checking before trusting any result. The four register checks above confirm this iterative Fibonacci program, running through every pipeline hazard mechanism (forwarding, stalling, branch flushing) simultaneously rather than in isolation, produces the same correct result (fib(10) = 55) on the pipelined core as it does on the single-cycle reference.
+The `WARNING` line is expected, not a failure, `$readmemh` always reports this since the hex file doesn't fill the full 1024-word instruction memory, and it doubles as confirmation of exactly which program got loaded, worth checking before trusting any result. The four register checks above confirm this iterative Fibonacci program, running through every pipeline hazard mechanism (forwarding, stalling, branch flushing) simultaneously rather than in isolation, produces the same correct result (fib(10) = 55) on the pipelined core as it does on the single-cycle reference.
 
 ### Repository Structure
 

@@ -29,7 +29,7 @@ module jal_false_stall_tb;
         .stall_out(stall_out));
 
     instr_mem u_instr_mem (.pc_current(pc_current),.instruction(instruction));
-    mem_interface u_mem_interface (.clk(clk),.addr(mem_addr),.wdata(mem_wdata),.byte_en(mem_byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(mem_rdata));
+    mem_interface u_mem_interface (.clk(clk),.rst(rst),.addr(mem_addr),.wdata(mem_wdata),.byte_en(mem_byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(mem_rdata));
 
     always #5 clk = ~clk;
 

@@ -2,6 +2,7 @@
 module mem_interface_tb;
 
 reg clk;
+reg rst;
 reg [31:0] addr;
 reg [31:0] wdata;
 reg [3:0] byte_en;
@@ -10,7 +11,7 @@ reg mem_read;
 wire [31:0] rdata;
 integer i;
 
-mem_interface uut(.clk(clk),.addr(addr),.wdata(wdata),.byte_en(byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(rdata));
+mem_interface uut(.clk(clk),.rst(rst),.addr(addr),.wdata(wdata),.byte_en(byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(rdata));
 
 initial clk = 0;
 always #5 clk = ~clk;
@@ -19,10 +20,15 @@ initial begin
     $dumpfile("mem_interface.vcd");
     $dumpvars(0,mem_interface_tb);
 
+    rst = 1;
+    #10;
+    rst = 0;
+
     // RAM inside the decoder powers up uninitialized, same as data_mem/regfile
     for (i = 0; i < 4096; i = i + 1)
         uut.ram.mem[i] = 8'h00;
 
+    
     // TESTING RAM range write/read (addr 0 well within the range)
 
     addr = 32'h00000000; wdata = 32'hFFFFFFFF; byte_en = 4'b1111;
@@ -58,7 +64,7 @@ initial begin
     #10;
     mem_write = 0; mem_read = 1;
     #10;
-    $display("just outside RAM at 0x1000: rdata=%h (expect 00000000, stub)",rdata);
+    $display("addr 0x10000000 now routes to UART, not stub (see uart_mmio_tb for real coverage): rdata=%h",rdata);
 
     addr = 32'h00000000; mem_read = 1;
     #10;

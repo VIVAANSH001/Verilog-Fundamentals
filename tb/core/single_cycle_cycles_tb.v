@@ -24,7 +24,7 @@ module single_cycle_cycles_tb;
     core uut (.clk(clk),.rst(rst),.instruction(instruction),.mem_rdata(mem_rdata),.pc_current(pc_current),.mem_addr(mem_addr),.mem_wdata(mem_wdata),.mem_byte_en(mem_byte_en),.mem_write(mem_write),.mem_read(mem_read));
 
     instr_mem u_instr_mem (.pc_current(pc_current),.instruction(instruction));
-    mem_interface u_mem_interface (.clk(clk),.addr(mem_addr),.wdata(mem_wdata),.byte_en(mem_byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(mem_rdata));
+    mem_interface u_mem_interface (.clk(clk),.rst(rst),.addr(mem_addr),.wdata(mem_wdata),.byte_en(mem_byte_en),.mem_write(mem_write),.mem_read(mem_read),.rdata(mem_rdata));
 
     always #5 clk = ~clk;
 
